@@ -1,0 +1,59 @@
+# =========================
+# NODE / ELECTRON / VITE
+# =========================
+node_modules/
+dist/
+dist-electron/
+out/
+build/
+.vite/
+.cache/
+target/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# env
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# =========================
+# TYPESCRIPT
+# =========================
+*.tsbuildinfo
+
+# =========================
+# ELECTRON
+# =========================
+electron-builder.json
+release/
+
+# =========================
+# RUST BACKEND
+# =========================
+/backend/target/
+**/target/
+
+Cargo.lock
+
+# Rust debug files
+*.pdb
+
+# =========================
+# IDE
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# OPTIONAL (security / local dev)
+# =========================
+*.log
