@@ -4,8 +4,6 @@ use std::process::Command;
 #[derive(Deserialize)]
 pub struct LaunchRequest {
     pub command: String,
-    #[serde(default)]
-    pub args: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -17,13 +15,60 @@ pub struct LaunchResponse {
 }
 
 pub fn launch_application(request: LaunchRequest) -> LaunchResponse {
-    match Command::new(&request.command).args(&request.args).output() {
-        Ok(output) => LaunchResponse {
-            success: output.status.success(),
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+
+    let result = match request.command.to_lowercase().as_str() {
+
+        // VALORANT
+        "valorant" => {
+            Command::new(
+                "C:\\Riot Games\\Riot Client\\RiotClientServices.exe"
+            )
+            .args([
+                "--launch-product=valorant",
+                "--launch-patchline=live"
+            ])
+            .spawn()
+        }
+
+        // NOTEPAD
+        "notepad" => {
+            Command::new(
+                "C:\\Windows\\System32\\notepad.exe"
+            )
+            .spawn()
+        }
+
+        // CALCULATRICE
+        "calc" => {
+            Command::new(
+                "C:\\Windows\\System32\\calc.exe"
+            )
+            .spawn()
+        }
+
+        // APPLICATION INCONNUE
+        _ => {
+            return LaunchResponse {
+                success: false,
+                stdout: String::new(),
+                stderr: String::new(),
+                error: Some(format!(
+                    "Application inconnue: {}",
+                    request.command
+                )),
+            };
+        }
+    };
+
+    match result {
+
+        Ok(_) => LaunchResponse {
+            success: true,
+            stdout: String::new(),
+            stderr: String::new(),
             error: None,
         },
+
         Err(err) => LaunchResponse {
             success: false,
             stdout: String::new(),
