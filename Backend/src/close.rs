@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct CloseRequest {
     pub command: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct CloseResponse {
     pub success: bool,
     pub stdout: String,

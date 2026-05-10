@@ -1,14 +1,21 @@
+mod close;
+mod database;
 mod handlers;
 mod launcher;
-mod close;
 mod system;
 
-use tower_http::cors::{CorsLayer, Any};
-use axum::{routing::{get, post}, Router};
-use std::net::SocketAddr;
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use database::Database;
+use std::{net::SocketAddr, sync::Arc};
+use tower_http::cors::{Any, CorsLayer};
 
 #[tokio::main]
 async fn main() {
+    let db = Arc::new(Database::new().expect("Falha ao inicializar banco de dados"));
+
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -19,7 +26,9 @@ async fn main() {
         .route("/system", get(handlers::system_handler))
         .route("/launch", post(handlers::launch_handler))
         .route("/close", post(handlers::close_handler))
-        .layer(cors);
+        .route("/history", get(handlers::history_handler))
+        .layer(cors)
+        .with_state(db);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("Listening on http://{}", addr);
