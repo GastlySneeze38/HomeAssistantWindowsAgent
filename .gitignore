@@ -43,7 +43,7 @@ release/
 **/target/
 
 Cargo.lock
-history.db
+App.db
 
 # Rust debug files
 *.pdb

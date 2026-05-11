@@ -7,6 +7,9 @@ Commande pour actualiser l'api en temp réel : cargo watch -x run -w src
 lancer les deux avec run-dev.bat
 
 TODO: 
+-optimiser les token pour ne pas encombrer la db
+-enlever les warning de compilation et enlever le code mort
+-rajouter l'interface d'historique de démmarage
 -Ajouter des Application pour le démarage d'app
 -Corriger la fermeture des processus pour une compatibilité plus importante
 -ajouter les fonctionnalité principale : 

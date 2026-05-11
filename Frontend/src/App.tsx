@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import LoginPage from './LoginPage';
+import { apiFetch } from './api';
 
 type SystemInfo = {
   available_ram_gb: number;
@@ -18,6 +20,16 @@ type CloseResponse = {
   error: string | null;
 };
 
+type HistoryEntry = {
+  id: number;
+  action_type: string;
+  command: string;
+  success: boolean;
+  error: string | null;
+  timestamp: string;
+};
+
+
 function App() {
   const [health, setHealth] = useState<string>('unknown');
   const [system, setSystem] = useState<SystemInfo | null>(null);
@@ -28,8 +40,22 @@ function App() {
   const [closeCommand, setCloseCommand] = useState('notepad');
   const [closeResult, setCloseResult] = useState<CloseResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
+
+  // Gestion du login
+  const handleLogin = (newToken: string) => {
+    setToken(newToken);
+    localStorage.setItem('token', newToken);
+  };
+
+  const handleLogout = () => {
+    setToken(null);
+    localStorage.removeItem('token');
+  };
 
   // Vérifier la disponibilité du backend régulièrement
+
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
@@ -40,48 +66,51 @@ function App() {
         setHealth(healthText);
         setIsOnline(true);
 
-        const systemResp = await fetch('http://127.0.0.1:3000/system', {
-          signal: AbortSignal.timeout(2000),
-        });
-        setSystem(await systemResp.json());
+        if (token) {
+          const systemResp = await apiFetch('http://127.0.0.1:3000/system', { signal: AbortSignal.timeout(2000) }, token);
+          setSystem(await systemResp.json());
+
+          const historyResp = await apiFetch('http://127.0.0.1:3000/history', { signal: AbortSignal.timeout(2000) }, token);
+          setHistory(await historyResp.json());
+        } else {
+          setSystem(null);
+          setHistory([]);
+        }
       } catch (err) {
         setIsOnline(false);
         setHealth('Hors ligne');
         setSystem(null);
+        setHistory([]);
       }
     };
 
-    // Vérifier immédiatement au chargement
     checkBackendHealth();
-
-    // Puis vérifier toutes les 2 secondes
     const interval = setInterval(checkBackendHealth, 2000);
     return () => clearInterval(interval);
-  }, []);
+  }, [token]);
+
 
   const launchApp = async () => {
     if (!isOnline) {
       setError('Le PC est hors ligne. Impossible de lancer une application.');
       return;
     }
-
+    if (!token) {
+      setError('Vous devez être connecté.');
+      return;
+    }
     setLaunchResult(null);
     setError(null);
-
     try {
       const payload = {
         command,
         args: args.trim() ? args.split(' ') : [],
       };
-
-      const resp = await fetch('http://127.0.0.1:3000/launch', {
+      const resp = await apiFetch('http://127.0.0.1:3000/launch', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      });
-
+      }, token);
       setLaunchResult(await resp.json());
     } catch (err) {
       setError('Erreur lors de l\'appel au backend de lancement');
@@ -89,34 +118,44 @@ function App() {
     }
   };
 
+
   const closeApp = async () => {
     if (!isOnline) {
       setError('Le PC est hors ligne. Impossible de fermer une application.');
       return;
     }
-
+    if (!token) {
+      setError('Vous devez être connecté.');
+      return;
+    }
     setCloseResult(null);
     setError(null);
-
     try {
       const payload = {
         command: closeCommand,
       };
-
-      const resp = await fetch('http://127.0.0.1:3000/close', {
+      const resp = await apiFetch('http://127.0.0.1:3000/close', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      });
-
+      }, token);
       setCloseResult(await resp.json());
     } catch (err) {
       setError('Erreur lors de l\'appel au backend de fermeture');
       setIsOnline(false);
     }
   };
+
+  if (!token) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
+        <div className="max-w-md w-full p-8 rounded-3xl border border-slate-700 bg-slate-900/80 shadow-xl shadow-slate-900/40 backdrop-blur-md">
+          <h1 className="text-3xl font-bold text-cyan-300 mb-6 text-center">Connexion requise</h1>
+          <LoginPage onLogin={handleLogin} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 px-6 py-8">
@@ -129,10 +168,10 @@ function App() {
               <span className={`font-semibold ${isOnline ? 'text-green-400' : 'text-red-400'}`}>
                 {isOnline ? 'PC en ligne' : 'PC hors ligne'}
               </span>
+              <button onClick={handleLogout} className="ml-4 rounded-xl bg-slate-800 px-3 py-1 text-sm text-slate-200 hover:bg-slate-700">Déconnexion</button>
             </div>
           </div>
         </header>
-
         {!isOnline && (
           <div className="rounded-3xl border border-red-700 bg-red-950/80 p-6 text-center">
             <p className="text-xl font-semibold text-red-300">⚠️ PC HORS LIGNE</p>

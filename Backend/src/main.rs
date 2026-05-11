@@ -3,6 +3,9 @@ mod database;
 mod handlers;
 mod launcher;
 mod system;
+mod auth;
+mod init;
+mod middleware;
 
 use axum::{
     routing::{get, post},
@@ -15,6 +18,9 @@ use tower_http::cors::{Any, CorsLayer};
 #[tokio::main]
 async fn main() {
     let db = Arc::new(Database::new().expect("Falha ao inicializar banco de dados"));
+    
+    // Initialiser les utilisateurs par défaut
+    init::init_default_user(&db);
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -27,6 +33,7 @@ async fn main() {
         .route("/launch", post(handlers::launch_handler))
         .route("/close", post(handlers::close_handler))
         .route("/history", get(handlers::history_handler))
+        .route("/login", post(handlers::login_handler))
         .layer(cors)
         .with_state(db);
 
