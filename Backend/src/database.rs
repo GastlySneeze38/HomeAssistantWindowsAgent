@@ -2,6 +2,7 @@ use chrono::Utc;
 use rusqlite::{params, Connection, Result as SqlResult};
 use serde::Serialize;
 use std::sync::Mutex;
+use crate::auth::{verify_password};
 
 #[derive(Serialize, Clone)]
 pub struct HistoryEntry {
@@ -99,31 +100,40 @@ impl Database {
         Ok(())
     }
 
-    pub fn login(&self, username: &str, password_hash: &str) -> SqlResult<Option<String>> {
+    // --- Auth related methods --- Argon2 + selt
+    pub fn login(&self, username: &str, password: &str) -> SqlResult<Option<String>> {
         let conn = self.conn.lock().unwrap();
-        
-        // Vérifier si l'utilisateur existe et le mot de passe est correct
-        let mut stmt = conn.prepare("SELECT id FROM users WHERE username = ?1 AND password_hash = ?2")?;
-        let user_id: Option<i32> = stmt.query_row(
-            params![username, password_hash],
-            |row| Ok(row.get(0)?),
-        ).ok();
 
-        if let Some(user_id) = user_id {
-            // Générer un token
-            let token = uuid::Uuid::new_v4().to_string();
-            let created_at = Utc::now().to_rfc3339();
-            let expires_at = (Utc::now() + chrono::Duration::days(7)).to_rfc3339();
+        // 1. Récupérer l'utilisateur + hash stocké
+        let mut stmt = conn.prepare(
+            "SELECT id, password_hash FROM users WHERE username = ?1"
+        )?;
 
-            conn.execute(
-                "INSERT INTO tokens (token, user_id, created_at, expires_at) VALUES (?1, ?2, ?3, ?4)",
-                params![token, user_id, created_at, expires_at],
-            )?;
+        let user: Option<(i32, String)> = stmt
+            .query_row(params![username], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .ok();
 
-            Ok(Some(token))
-        } else {
-            Ok(None)
+        // 2. Vérifier mot de passe avec Argon2
+        if let Some((user_id, stored_hash)) = user {
+            if verify_password(password, &stored_hash) {
+                // 3. Générer token si OK
+                let token = uuid::Uuid::new_v4().to_string();
+                let created_at = Utc::now().to_rfc3339();
+                let expires_at = (Utc::now() + chrono::Duration::days(7)).to_rfc3339();
+
+                conn.execute(
+                    "INSERT INTO tokens (token, user_id, created_at, expires_at)
+                    VALUES (?1, ?2, ?3, ?4)",
+                    params![token, user_id, created_at, expires_at],
+                )?;
+
+                return Ok(Some(token));
+            }
         }
+
+        Ok(None)
     }
 
     pub fn verify_token(&self, token: &str) -> SqlResult<bool> {

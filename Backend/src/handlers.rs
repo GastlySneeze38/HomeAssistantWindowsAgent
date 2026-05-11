@@ -5,7 +5,7 @@ use crate::close::{close_application, CloseRequest};
 use crate::database::Database;
 use crate::launcher::{launch_application, LaunchRequest};
 use crate::system::{SystemInfo, get_available_ram};
-use crate::auth::{LoginRequest, LoginResponse, hash_password};
+use crate::auth::{LoginRequest, LoginResponse};
 use crate::middleware::BearerToken;
 
 pub async fn health_handler() -> impl IntoResponse {
@@ -108,9 +108,8 @@ pub async fn login_handler(
     State(db): State<Arc<Database>>,
     Json(payload): Json<LoginRequest>,
 ) -> Json<LoginResponse> {
-    let password_hash = hash_password(&payload.password);
     
-    match db.login(&payload.username, &password_hash) {
+    match db.login(&payload.username, &payload.password) {
         Ok(Some(token)) => Json(LoginResponse {
             success: true,
             token: Some(token),

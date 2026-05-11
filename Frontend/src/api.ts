@@ -1,7 +1,20 @@
-export function apiFetch(url: string, options: RequestInit = {}, token?: string) {
-  const headers = new Headers(options.headers || {});
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
+export async function apiFetch(
+  url: string,
+  options: RequestInit = {},
+  token: string | null
+) {
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      Authorization: token ? `Bearer ${token}` : "",
+    },
+  });
+
+  // ❌ TOKEN EXPIRE OU INVALID
+  if (res.status === 401) {
+    throw new Error("UNAUTHORIZED");
   }
-  return fetch(url, { ...options, headers });
+
+  return res;
 }

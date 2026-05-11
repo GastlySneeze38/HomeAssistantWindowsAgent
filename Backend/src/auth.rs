@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
+use argon2::{Argon2, PasswordHasher, PasswordHash, PasswordVerifier};
+use password_hash::{SaltString, rand_core::OsRng};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {
@@ -15,12 +16,18 @@ pub struct LoginResponse {
 }
 
 pub fn hash_password(password: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(password.as_bytes());
-    hex::encode(hasher.finalize())
+    let salt = SaltString::generate(&mut OsRng);
+    let argon2 = Argon2::default();
+
+    argon2
+        .hash_password(password.as_bytes(), &salt)
+        .unwrap()
+        .to_string()
 }
 
-#[allow(dead_code)]
 pub fn verify_password(password: &str, hash: &str) -> bool {
-    hash_password(password) == hash
+    let parsed_hash = PasswordHash::new(hash).unwrap();
+    Argon2::default()
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .is_ok()
 }
