@@ -31,11 +31,9 @@ type HistoryEntry = {
 
 
 function App() {
-  const [health, setHealth] = useState<string>('unknown');
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(false);
   const [command, setCommand] = useState('notepad.exe');
-  const [args, setArgs] = useState('');
   const [launchResult, setLaunchResult] = useState<LaunchResponse | null>(null);
   const [closeCommand, setCloseCommand] = useState('notepad');
   const [closeResult, setCloseResult] = useState<CloseResponse | null>(null);
@@ -54,41 +52,102 @@ function App() {
     localStorage.removeItem('token');
   };
 
+  const handleUnautorized = (ErrMessage : string) => {
+    if (ErrMessage === 'UNAUTHORIZED') {
+      setToken(null);
+      localStorage.removeItem('token');
+    } else {
+      setError('Erreur lors de l\'appel au backend de fermeture');
+      setIsOnline(false);
+    }
+  };
+
   // Vérifier la disponibilité du backend régulièrement
 
   useEffect(() => {
-    const checkBackendHealth = async () => {
-      try {
-        const healthResp = await fetch('http://127.0.0.1:3000/health', {
-          signal: AbortSignal.timeout(2000),
-        });
-        const healthText = await healthResp.text();
-        setHealth(healthText);
-        setIsOnline(true);
-
-        if (token) {
-          const systemResp = await apiFetch('http://127.0.0.1:3000/system', { signal: AbortSignal.timeout(2000) }, token);
-          setSystem(await systemResp.json());
-
-          const historyResp = await apiFetch('http://127.0.0.1:3000/history', { signal: AbortSignal.timeout(2000) }, token);
-          setHistory(await historyResp.json());
-        } else {
-          setSystem(null);
-          setHistory([]);
-        }
-      } catch (err) {
-        setIsOnline(false);
-        setHealth('Hors ligne');
+    const fetchProtectedData = async () => {
+      if (!token) {
         setSystem(null);
         setHistory([]);
+        return;
+      }
+
+      try {
+        // Récupération du système
+        const systemResponse = await apiFetch(
+          'http://127.0.0.1:3000/system',
+          { signal: AbortSignal.timeout(2000) },
+          token
+        );
+
+        const systemData = await systemResponse.json();
+        setSystem(systemData);
+
+        // Récupération de l'historique
+        const historyResponse = await apiFetch(
+          'http://127.0.0.1:3000/history',
+          { signal: AbortSignal.timeout(2000) },
+          token
+        );
+
+        const historyData = await historyResponse.json();
+        setHistory(historyData);
+
+      } catch (err) {
+        if (err instanceof Error) {
+          handleUnautorized(err.message);
+        }
       }
     };
 
-    checkBackendHealth();
-    const interval = setInterval(checkBackendHealth, 2000);
-    return () => clearInterval(interval);
-  }, [token]);
+    const checkBackendHealth = async () => {
+      try {
 
+        // Vérification du backend
+        const healthResponse = await fetch(
+          'http://127.0.0.1:3000/health',
+          {
+            signal: AbortSignal.timeout(2000),
+          }
+        );
+
+        const healthText = await healthResponse.text();
+
+        if (healthText !== 'OK') {
+          throw new Error('Backend health check failed');
+        }
+
+        // Si on arrive ici, le backend est en bonne santé
+        setIsOnline(true);
+
+        // Chargement des données protégées
+        await fetchProtectedData();
+
+      } catch (err) {
+        setIsOnline(false);
+        setSystem(null);
+        setHistory([]);
+
+      }
+    };
+
+    // Premier appel
+    checkBackendHealth();
+    fetchProtectedData();
+
+    // Vérification automatique
+    const interval = setInterval(() => {
+
+      checkBackendHealth();
+      fetchProtectedData();
+
+    }, 2000);
+
+    return () => {
+      clearInterval(interval);
+    };
+
+  }, [token]);
 
   const launchApp = async () => {
     if (!isOnline) {
@@ -101,20 +160,22 @@ function App() {
     }
     setLaunchResult(null);
     setError(null);
+    
     try {
-      const payload = {
-        command,
-        args: args.trim() ? args.split(' ') : [],
-      };
+      const payload = { command };
+
       const resp = await apiFetch('http://127.0.0.1:3000/launch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       }, token);
+
       setLaunchResult(await resp.json());
+    
     } catch (err) {
-      setError('Erreur lors de l\'appel au backend de lancement');
-      setIsOnline(false);
+      if (err instanceof Error) {
+        handleUnautorized(err.message);
+      }
     }
   };
 
@@ -141,8 +202,9 @@ function App() {
       }, token);
       setCloseResult(await resp.json());
     } catch (err) {
-      setError('Erreur lors de l\'appel au backend de fermeture');
-      setIsOnline(false);
+      if (err instanceof Error) {
+        handleUnautorized(err.message);
+      }
     }
   };
 
@@ -260,6 +322,40 @@ function App() {
             </div>
           )}
           {error && <p className="mt-4 text-red-400">{error}</p>}
+        </section>
+
+        <section className="rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
+          <h2 className="text-2xl font-semibold text-slate-100">Historique des actions</h2>
+          <div className="mt-4 space-y-4">
+            {history.length > 0 ? (
+              <table className="w-full text-slate-300">
+                <thead>
+                  <tr>
+                    <th className="border-b border-slate-700 p-2 text-left">ID</th>
+                    <th className="border-b border-slate-700 p-2 text-left">Action</th>
+                    <th className="border-b border-slate-700 p-2 text-left">Commande</th>
+                    <th className="border-b border-slate-700 p-2 text-left">Succès</th>
+                    <th className="border-b border-slate-700 p-2 text-left">Erreur</th>
+                    <th className="border-b border-slate-700 p-2 text-left">Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((entry) => (
+                    <tr key={entry.id}>
+                      <td className="border-b border-slate-800 p-2">{entry.id}</td>
+                      <td className="border-b border-slate-800 p-2">{entry.action_type}</td>
+                      <td className="border-b border-slate-800 p-2">{entry.command}</td>
+                      <td className="border-b border-slate-800 p-2">{entry.success ? 'Oui' : 'Non'}</td>
+                      <td className="border-b border-slate-800 p-2">{entry.error || 'Aucune'}</td>
+                      <td className="border-b border-slate-800 p-2">{entry.timestamp}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-slate-400">Aucune action enregistrée.</p>
+            )}
+          </div>
         </section>
       </div>
     </div>

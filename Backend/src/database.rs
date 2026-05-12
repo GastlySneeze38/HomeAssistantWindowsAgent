@@ -2,7 +2,7 @@ use chrono::Utc;
 use rusqlite::{params, Connection, Result as SqlResult};
 use serde::Serialize;
 use std::sync::Mutex;
-use crate::auth::{verify_password};
+use crate::auth::{verify_password, hash_password};
 
 #[derive(Serialize, Clone)]
 pub struct HistoryEntry {
@@ -148,8 +148,12 @@ impl Database {
         Ok(exists)
     }
 
-    pub fn create_user(&self, username: &str, password_hash: &str) -> SqlResult<()> {
+    pub fn create_user(&self, username: &str, password: &str) -> SqlResult<()> {
         let conn = self.conn.lock().unwrap();
+        
+        // Hash sécurisé Argon2 (avec salt)
+        let password_hash = hash_password(password);
+
         conn.execute(
             "INSERT INTO users (username, password_hash) VALUES (?1, ?2)",
             params![username, password_hash],
