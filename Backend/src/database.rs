@@ -171,4 +171,33 @@ impl Database {
         )?;
         Ok(())
     }
+
+    pub fn delete_user(&self, username: &str, password: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        
+        // 1. Récupérer l'utilisateur + hash stocké
+        let mut stmt = conn.prepare(
+            "SELECT id, password_hash FROM users WHERE username = ?1"
+        )?;
+
+        let user: Option<(i32, String)> = stmt
+            .query_row(params![username], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .ok();
+
+        // 2. Vérifier mot de passe avec Argon2
+        if let Some((_user_id, stored_hash)) = user {
+            if verify_password(password, &stored_hash) {
+                conn.execute(
+                    "DELETE FROM users WHERE username = ?1",
+                    params![username],
+                )?;
+
+                return Ok(());
+            }
+        }
+
+        Ok(())
+    }
 }

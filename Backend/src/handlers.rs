@@ -1,5 +1,5 @@
 use axum::{extract::{Json, State}, response::IntoResponse, http::StatusCode};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::sync::Arc;
 use crate::close::{close_application, CloseRequest};
 use crate::database::Database;
@@ -137,4 +137,68 @@ pub async fn logout_handler(
         Ok(_) => StatusCode::OK,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }
+}
+
+pub async fn handle_create_user(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<LoginRequest>,
+) -> Result<Json<LoginResponse>, (StatusCode, Json<Value>)> {
+    
+    match db.verify_token(&token) {
+        Ok(true) => {
+            match db.create_user(&payload.username, &payload.password) {
+                Ok(_) => Ok(Json(LoginResponse {
+                    success: true,
+                    token: None,
+                    message: "User created successfully".to_string(),
+                })),
+                Err(_) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": "Internal server error"
+                    })),
+                )),
+            }
+        }
+        _ => Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "error": "Invalid or expired token"
+            })),
+        )),
+    }
+}
+
+pub async fn handle_delete_user(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<LoginRequest>,
+) -> Result<Json<LoginResponse>, (StatusCode, Json<Value>)> {
+    
+    match db.verify_token(&token) {
+        Ok(true) => {
+            match db.delete_user(&payload.username, &payload.password) {
+                Ok(_) => Ok(Json(LoginResponse {
+                    success: true,
+                    token: None,
+                    message: "User deleted successfully".to_string(),
+                })),
+                Err(_) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": "Internal server error"
+                    })),
+                )),
+            }
+        }
+        _ => Err((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({
+                "error": "Invalid or expired token"
+            })),
+        )),
+    }
+
+    
 }

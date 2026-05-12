@@ -29,7 +29,6 @@ type HistoryEntry = {
   timestamp: string;
 };
 
-
 function App() {
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(false);
@@ -40,6 +39,12 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
+
+  // Ajout des états pour gérer les utilisateurs
+  const [newUserId, setNewUserId] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [deleteUserId, setDeleteUserId] = useState('');
+  const [deleteUserPassword, setDeleteUserPassword] = useState('');
 
   // Gestion du login
   const handleLogin = (newToken: string) => {
@@ -220,6 +225,56 @@ function App() {
     }
   };
 
+  const createUser = async () => {
+    if (!token) {
+      setError('Vous devez être connecté.');
+      return;
+    }
+    try {
+      const payload = { username: newUserId, password: newUserPassword };
+      const resp = await apiFetch('http://127.0.0.1:3000/create_user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, token);
+      const result = await resp.json();
+      if (result.success) {
+        alert('Utilisateur créé avec succès');
+      } else {
+        alert('Erreur lors de la création de l\'utilisateur');
+      }
+    } catch (err) {
+      if (err instanceof Error) {
+        handleUnautorized(err.message);
+      }
+    }
+  };
+
+  const deleteUser = async () => {
+    if (!token) {
+      setError('Vous devez être connecté.');
+      return;
+    }
+    try {
+      const payload = { username: deleteUserId, password: deleteUserPassword };
+      const resp = await apiFetch('http://127.0.0.1:3000/delete_user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, token);
+      const result = await resp.json();
+      if (result.success) {
+        alert('Utilisateur supprimé avec succès');
+      } else {
+        alert('Erreur lors de la suppression de l\'utilisateur');
+      }
+    } catch (err) {
+      if (err instanceof Error) {
+        handleUnautorized(err.message);
+      }
+    }
+  };
+
   if (!token) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
@@ -367,6 +422,62 @@ function App() {
             ) : (
               <p className="text-slate-400">Aucune action enregistrée.</p>
             )}
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
+          <h2 className="text-2xl font-semibold text-slate-100">Gestion des utilisateurs</h2>
+          <div className="mt-4 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-slate-300">Nouvel Identifiant</span>
+                <input
+                  value={newUserId}
+                  onChange={(e) => setNewUserId(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400"
+                />
+              </label>
+              <label className="block">
+                <span className="text-slate-300">Mot de passe</span>
+                <input
+                  type="password"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400"
+                />
+              </label>
+            </div>
+            <button
+              onClick={createUser}
+              className="rounded-2xl bg-green-500 px-6 py-3 font-semibold text-slate-950 transition hover:bg-green-400"
+            >
+              Ajouter Utilisateur
+            </button>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-slate-300">Identifiant à supprimer</span>
+                <input
+                  value={deleteUserId}
+                  onChange={(e) => setDeleteUserId(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400"
+                />
+              </label>
+              <label className="block">
+                <span className="text-slate-300">Mot de passe</span>
+                <input
+                  type="password"
+                  value={deleteUserPassword}
+                  onChange={(e) => setDeleteUserPassword(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 outline-none focus:border-cyan-400"
+                />
+              </label>
+            </div>
+            <button
+              onClick={deleteUser}
+              className="rounded-2xl bg-red-600 px-6 py-3 font-semibold text-slate-950 transition hover:bg-red-500"
+            >
+              Supprimer Utilisateur
+            </button>
           </div>
         </section>
       </div>
