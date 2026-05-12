@@ -34,6 +34,7 @@ async fn main() {
         .route("/close", post(handlers::close_handler))
         .route("/history", get(handlers::history_handler))
         .route("/login", post(handlers::login_handler))
+        .route("/logout", post(handlers::logout_handler))
         .layer(cors)
         .with_state(db);
 

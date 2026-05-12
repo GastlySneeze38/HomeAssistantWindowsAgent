@@ -47,17 +47,29 @@ function App() {
     localStorage.setItem('token', newToken);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      if (token) {
+        await fetch("http://127.0.0.1:3000/logout", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      }
+    } catch(err) {
+      setError('Erreur lors de l\'appel au backend :' + err);
+    }
+
     setToken(null);
-    localStorage.removeItem('token');
+    localStorage.removeItem("token");
   };
 
   const handleUnautorized = (ErrMessage : string) => {
     if (ErrMessage === 'UNAUTHORIZED') {
-      setToken(null);
-      localStorage.removeItem('token');
+      handleLogout();
     } else {
-      setError('Erreur lors de l\'appel au backend de fermeture');
+      setError('Erreur lors de l\'appel au backend : ' + ErrMessage);
       setIsOnline(false);
     }
   };

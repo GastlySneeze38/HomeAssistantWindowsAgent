@@ -127,3 +127,14 @@ pub async fn login_handler(
         }),
     }
 }
+
+pub async fn logout_handler(
+    State(db): State<Arc<Database>>,
+    bearer: BearerToken,
+) -> StatusCode {
+
+    match db.delete_token(&bearer.0) {
+        Ok(_) => StatusCode::OK,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}

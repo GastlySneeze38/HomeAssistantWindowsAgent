@@ -7,7 +7,6 @@ Commande pour actualiser l'api en temp réel : cargo watch -x run -w src
 lancer les deux avec run-dev.bat
 
 TODO: 
--optimiser les token pour ne pas encombrer la db retirer l'uuid quand la personne quitte l'app ou qu'il se déconnecte
 -ajouter de quoi ajouter un utilisateur et faire supprimer l'utilisateur de base automatiquement
 -rajouter l'interface d'historique d'action et le relier selon l'uuid qui l'a executer
 -Ajouter des Application pour le démarage d'app

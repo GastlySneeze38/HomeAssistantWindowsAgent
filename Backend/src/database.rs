@@ -148,6 +148,17 @@ impl Database {
         Ok(exists)
     }
 
+    pub fn delete_token(&self, token: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+
+        conn.execute(
+            "DELETE FROM tokens WHERE token = ?1",
+            params![token],
+        )?;
+
+        Ok(())
+    }
+
     pub fn create_user(&self, username: &str, password: &str) -> SqlResult<()> {
         let conn = self.conn.lock().unwrap();
         
