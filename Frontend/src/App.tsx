@@ -7,18 +7,20 @@ import Sidebar from './components/Sidebar';
 import ControlSection from './components/sections/ControlSection';
 import HistorySection from './components/sections/HistorySection';
 import UsersSection from './components/sections/UsersSection';
+import DashboardSection from './components/sections/DashboardSection';
 import {
   CloseResponse,
+  DashboardData,
   HistoryEntry,
   LaunchResponse,
-  SystemInfo,
   View,
 } from './types';
 
 function App() {
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
-  const [system, setSystem] = useState<SystemInfo | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [isOnline, setIsOnline] = useState(false);
+  const [backendHealthy, setBackendHealthy] = useState(false);
   const [command, setCommand] = useState('notepad.exe');
   const [launchResult, setLaunchResult] = useState<LaunchResponse | null>(null);
   const [closeCommand, setCloseCommand] = useState('notepad');
@@ -26,18 +28,31 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
-  const [activeView, setActiveView] = useState<View>('control');
+  const [activeView, setActiveView] = useState<View>('dashboard');
 
   const [newUserId, setNewUserId] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [deleteUserId, setDeleteUserId] = useState('');
   const [deleteUserPassword, setDeleteUserPassword] = useState('');
 
+  // Setup check
   useEffect(() => {
     fetch('http://127.0.0.1:3000/setup/status')
       .then((r) => r.json())
       .then((d) => setNeedsSetup(d.needs_setup === true))
       .catch(() => setNeedsSetup(false));
+  }, []);
+
+  // Backend health poll
+  useEffect(() => {
+    const check = () => {
+      fetch('http://127.0.0.1:3000/health')
+        .then((r) => setBackendHealthy(r.ok))
+        .catch(() => setBackendHealthy(false));
+    };
+    check();
+    const id = setInterval(check, 5000);
+    return () => clearInterval(id);
   }, []);
 
   const handleLogin = (newToken: string) => {
@@ -47,13 +62,13 @@ function App() {
 
   const handleWsMessage = useCallback((msg: WsMessage) => {
     if (msg.type === 'system_update') {
-      setSystem(msg.data);
+      setDashboard(msg.data);
     }
   }, []);
 
   const handleWsStatus = useCallback((online: boolean) => {
     setIsOnline(online);
-    if (!online) setSystem(null);
+    if (!online) setDashboard(null);
   }, []);
 
   useWebSocket({ token, onMessage: handleWsMessage, onStatusChange: handleWsStatus });
@@ -63,15 +78,12 @@ function App() {
       if (token) {
         await fetch('http://127.0.0.1:3000/logout', {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         });
       }
     } catch (err) {
       setError("Erreur lors de l'appel au backend : " + err);
     }
-
     setToken(null);
     localStorage.removeItem('token');
   };
@@ -85,154 +97,83 @@ function App() {
     }
   };
 
+  // History poll
   useEffect(() => {
     const fetchHistory = async () => {
-      if (!token) {
-        setHistory([]);
-        return;
-      }
+      if (!token) { setHistory([]); return; }
       try {
-        const res = await apiFetch(
-          'http://127.0.0.1:3000/history',
-          { signal: AbortSignal.timeout(3000) },
-          token
-        );
+        const res = await apiFetch('http://127.0.0.1:3000/history', { signal: AbortSignal.timeout(3000) }, token);
         setHistory(await res.json());
       } catch (err) {
         if (err instanceof Error) handleUnauthorized(err.message);
       }
     };
-
     fetchHistory();
-    const interval = setInterval(fetchHistory, 5000);
-    return () => clearInterval(interval);
+    const id = setInterval(fetchHistory, 5000);
+    return () => clearInterval(id);
   }, [token]);
 
   const launchApp = async () => {
-    if (!isOnline) {
-      setError('Le PC est hors ligne. Impossible de lancer une application.');
-      return;
-    }
-    if (!token) {
-      setError('Vous devez être connecté.');
-      return;
-    }
-
-    setLaunchResult(null);
-    setError(null);
-
+    if (!isOnline) { setError('Le PC est hors ligne.'); return; }
+    if (!token) { setError('Vous devez être connecté.'); return; }
+    setLaunchResult(null); setError(null);
     try {
-      const resp = await apiFetch(
-        'http://127.0.0.1:3000/launch',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command }),
-        },
-        token
-      );
-
+      const resp = await apiFetch('http://127.0.0.1:3000/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+      }, token);
       setLaunchResult(await resp.json());
     } catch (err) {
-      if (err instanceof Error) {
-        handleUnauthorized(err.message);
-      }
+      if (err instanceof Error) handleUnauthorized(err.message);
     }
   };
 
   const closeApp = async () => {
-    if (!isOnline) {
-      setError('Le PC est hors ligne. Impossible de fermer une application.');
-      return;
-    }
-    if (!token) {
-      setError('Vous devez être connecté.');
-      return;
-    }
-
-    setCloseResult(null);
-    setError(null);
-
+    if (!isOnline) { setError('Le PC est hors ligne.'); return; }
+    if (!token) { setError('Vous devez être connecté.'); return; }
+    setCloseResult(null); setError(null);
     try {
-      const resp = await apiFetch(
-        'http://127.0.0.1:3000/close',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command: closeCommand }),
-        },
-        token
-      );
-
+      const resp = await apiFetch('http://127.0.0.1:3000/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: closeCommand }),
+      }, token);
       setCloseResult(await resp.json());
     } catch (err) {
-      if (err instanceof Error) {
-        handleUnauthorized(err.message);
-      }
+      if (err instanceof Error) handleUnauthorized(err.message);
     }
   };
 
   const createUser = async () => {
-    if (!token) {
-      setError('Vous devez être connecté.');
-      return;
-    }
-
+    if (!token) { setError('Vous devez être connecté.'); return; }
     try {
-      const resp = await apiFetch(
-        'http://127.0.0.1:3000/create_user',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: newUserId, password: newUserPassword }),
-        },
-        token
-      );
-
+      const resp = await apiFetch('http://127.0.0.1:3000/create_user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: newUserId, password: newUserPassword }),
+      }, token);
       const result = await resp.json();
-      if (result.success) {
-        alert('Utilisateur créé avec succès');
-        setNewUserId('');
-        setNewUserPassword('');
-      } else {
-        alert("Erreur lors de la création de l'utilisateur");
-      }
+      if (result.success) { alert('Utilisateur créé avec succès'); setNewUserId(''); setNewUserPassword(''); }
+      else alert("Erreur lors de la création de l'utilisateur");
     } catch (err) {
-      if (err instanceof Error) {
-        handleUnauthorized(err.message);
-      }
+      if (err instanceof Error) handleUnauthorized(err.message);
     }
   };
 
   const deleteUser = async () => {
-    if (!token) {
-      setError('Vous devez être connecté.');
-      return;
-    }
-
+    if (!token) { setError('Vous devez être connecté.'); return; }
     try {
-      const resp = await apiFetch(
-        'http://127.0.0.1:3000/delete_user',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: deleteUserId, password: deleteUserPassword }),
-        },
-        token
-      );
-
+      const resp = await apiFetch('http://127.0.0.1:3000/delete_user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: deleteUserId, password: deleteUserPassword }),
+      }, token);
       const result = await resp.json();
-      if (result.success) {
-        alert('Utilisateur supprimé avec succès');
-        setDeleteUserId('');
-        setDeleteUserPassword('');
-      } else {
-        alert("Erreur lors de la suppression de l'utilisateur");
-      }
+      if (result.success) { alert('Utilisateur supprimé avec succès'); setDeleteUserId(''); setDeleteUserPassword(''); }
+      else alert("Erreur lors de la suppression de l'utilisateur");
     } catch (err) {
-      if (err instanceof Error) {
-        handleUnauthorized(err.message);
-      }
+      if (err instanceof Error) handleUnauthorized(err.message);
     }
   };
 
@@ -272,10 +213,11 @@ function App() {
           activeView={activeView}
           onChangeView={setActiveView}
           isOnline={isOnline}
+          backendHealthy={backendHealthy}
           onLogout={handleLogout}
         />
 
-        <main className="flex-1 px-6 py-8">
+        <main className="flex-1 px-6 py-8 overflow-y-auto">
           <div className="mx-auto max-w-5xl space-y-8">
             {!isOnline && (
               <div className="rounded-3xl border border-red-700 bg-red-950/80 p-6 text-center">
@@ -286,10 +228,11 @@ function App() {
               </div>
             )}
 
+            {activeView === 'dashboard' && <DashboardSection data={dashboard} />}
+
             {activeView === 'control' && (
               <ControlSection
                 isOnline={isOnline}
-                system={system}
                 command={command}
                 setCommand={setCommand}
                 closeCommand={closeCommand}

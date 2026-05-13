@@ -1,8 +1,7 @@
-import { CloseResponse, LaunchResponse, SystemInfo } from '../../types';
+import { CloseResponse, LaunchResponse } from '../../types';
 
 type ControlSectionProps = {
   isOnline: boolean;
-  system: SystemInfo | null;
   command: string;
   setCommand: (value: string) => void;
   closeCommand: string;
@@ -16,7 +15,6 @@ type ControlSectionProps = {
 
 export default function ControlSection({
   isOnline,
-  system,
   command,
   setCommand,
   closeCommand,
@@ -102,24 +100,6 @@ export default function ControlSection({
         {error && <p className="mt-4 text-red-400">{error}</p>}
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
-          <h2 className="text-2xl font-semibold text-slate-100">Backend health</h2>
-          <p className="mt-4 text-slate-300">
-            Statut :{' '}
-            <span className={`font-medium ${isOnline ? 'text-green-300' : 'text-red-300'}`}>
-              {isOnline ? 'En ligne' : 'Hors ligne'}
-            </span>
-          </p>
-        </div>
-
-        <div className="rounded-3xl border border-slate-700 bg-slate-900/80 p-6">
-          <h2 className="text-2xl font-semibold text-slate-100">Mémoire disponible</h2>
-          <p className="mt-4 text-slate-300">
-            {system ? `${system.available_ram_gb.toFixed(2)} GB` : isOnline ? 'Chargement...' : 'PC hors ligne'}
-          </p>
-        </div>
-      </section>
     </>
   );
 }

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { DashboardData } from '../types';
 
 const WS_URL = 'ws://127.0.0.1:3000/ws';
 const RECONNECT_DELAY_MS = 3000;
 
-export type WsMessage =
-  | { type: 'system_update'; data: { available_ram_gb: number } };
+export type WsMessage = { type: 'system_update'; data: DashboardData };
 
 interface UseWebSocketOptions {
   token: string | null;
@@ -23,9 +23,7 @@ export function useWebSocket({ token, onMessage, onStatusChange }: UseWebSocketO
     const ws = new WebSocket(`${WS_URL}?token=${encodeURIComponent(token)}`);
     wsRef.current = ws;
 
-    ws.onopen = () => {
-      onStatusChange?.(true);
-    };
+    ws.onopen = () => { onStatusChange?.(true); };
 
     ws.onmessage = (event) => {
       try {
@@ -43,15 +41,12 @@ export function useWebSocket({ token, onMessage, onStatusChange }: UseWebSocketO
       }
     };
 
-    ws.onerror = () => {
-      ws.close();
-    };
+    ws.onerror = () => { ws.close(); };
   }, [token, onMessage, onStatusChange]);
 
   useEffect(() => {
     mountedRef.current = true;
     connect();
-
     return () => {
       mountedRef.current = false;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);

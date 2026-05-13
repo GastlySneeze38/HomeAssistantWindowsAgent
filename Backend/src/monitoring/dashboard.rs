@@ -1,5 +1,5 @@
 use serde::Serialize;
-use sysinfo::{Disks, Networks, System};
+use sysinfo::{Networks, System};
 
 // ── CPU ───────────────────────────────────────────────────────────────────────
 
@@ -21,16 +21,6 @@ pub struct RamInfo {
     pub usage_percent: f32,
 }
 
-// ── Disques ───────────────────────────────────────────────────────────────────
-
-#[derive(Serialize, Clone)]
-pub struct DiskInfo {
-    pub name: String,
-    pub total_gb: f64,
-    pub available_gb: f64,
-    pub usage_percent: f32,
-}
-
 // ── Réseau ────────────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Clone)]
@@ -38,16 +28,6 @@ pub struct NetworkInfo {
     pub name: String,
     pub received_kb: f64,
     pub transmitted_kb: f64,
-}
-
-// ── Processus ─────────────────────────────────────────────────────────────────
-
-#[derive(Serialize, Clone)]
-pub struct ProcessInfo {
-    pub pid: u32,
-    pub name: String,
-    pub cpu_usage: f32,
-    pub memory_mb: f64,
 }
 
 // ── GPU NVIDIA (nvml-wrapper) ─────────────────────────────────────────────────
@@ -74,9 +54,7 @@ pub struct WindowInfo {
 pub struct DashboardData {
     pub cpu: CpuInfo,
     pub ram: RamInfo,
-    pub disks: Vec<DiskInfo>,
     pub network: Vec<NetworkInfo>,
-    pub processes: Vec<ProcessInfo>,
     pub uptime_seconds: u64,
     pub gpu: Option<GpuInfo>,
     pub active_windows: Vec<WindowInfo>,
@@ -84,8 +62,7 @@ pub struct DashboardData {
 
 // ── Collecte ──────────────────────────────────────────────────────────────────
 
-pub fn collect_dashboard() -> DashboardData {
-    let mut sys = System::new_all();
+pub fn collect_dashboard(sys: &mut System) -> DashboardData {
     sys.refresh_all();
 
     // CPU
@@ -105,27 +82,6 @@ pub fn collect_dashboard() -> DashboardData {
         0.0
     };
 
-    // Disques
-    let disks_list = Disks::new_with_refreshed_list();
-    let disks = disks_list
-        .iter()
-        .map(|d| {
-            let total = gb(d.total_space());
-            let avail = gb(d.available_space());
-            let pct = if d.total_space() > 0 {
-                (d.total_space() - d.available_space()) as f32 / d.total_space() as f32 * 100.0
-            } else {
-                0.0
-            };
-            DiskInfo {
-                name: d.name().to_string_lossy().to_string(),
-                total_gb: total,
-                available_gb: avail,
-                usage_percent: pct,
-            }
-        })
-        .collect();
-
     // Réseau
     let nets = Networks::new_with_refreshed_list();
     let network = nets
@@ -136,26 +92,6 @@ pub fn collect_dashboard() -> DashboardData {
             transmitted_kb: data.transmitted() as f64 / 1024.0,
         })
         .collect();
-
-    // Processus — top 10 par CPU
-    let mut processes: Vec<ProcessInfo> = sys
-        .processes()
-        .values()
-        .map(|p| ProcessInfo {
-            pid: p.pid().as_u32(),
-            name: p.name().to_string(),
-            cpu_usage: p.cpu_usage(),
-            memory_mb: p.memory() as f64 / (1024.0 * 1024.0),
-        })
-        .collect();
-    processes.sort_by(|a, b| b.cpu_usage.partial_cmp(&a.cpu_usage).unwrap_or(std::cmp::Ordering::Equal));
-    processes.truncate(10);
-
-    // GPU NVIDIA
-    let gpu = collect_gpu_info();
-
-    // Fenêtres actives (windows-rs)
-    let active_windows = collect_active_windows();
 
     DashboardData {
         cpu: CpuInfo {
@@ -170,12 +106,10 @@ pub fn collect_dashboard() -> DashboardData {
             available_gb: ram_avail,
             usage_percent: ram_pct,
         },
-        disks,
         network,
-        processes,
         uptime_seconds: System::uptime(),
-        gpu,
-        active_windows,
+        gpu: collect_gpu_info(),
+        active_windows: collect_active_windows(),
     }
 }
 
@@ -202,8 +136,8 @@ fn collect_gpu_info() -> Option<GpuInfo> {
 // Si LHM n'est pas actif, retourne None sans erreur.
 
 fn collect_cpu_temperature() -> Option<f64> {
-    use wmi::{COMLibrary, WMIConnection};
     use std::collections::HashMap;
+    use wmi::{COMLibrary, WMIConnection};
 
     let com = COMLibrary::new().ok()?;
     let wmi = WMIConnection::with_namespace_path("root\\LibreHardwareMonitor", com).ok()?;

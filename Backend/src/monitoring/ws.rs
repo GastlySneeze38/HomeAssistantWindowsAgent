@@ -8,7 +8,8 @@ use axum::{
 };
 use serde::Serialize;
 use serde_json::json;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use sysinfo::System;
 use tokio::time::{interval, Duration};
 
 use crate::core::database::Database;
@@ -44,28 +45,30 @@ pub async fn ws_handler(
 async fn handle_socket(mut socket: WebSocket) {
     let mut tick = interval(Duration::from_secs(1));
 
+    // System partagé entre les ticks — le delta CPU sera correct dès le 2e tick
+    let sys = Arc::new(Mutex::new(System::new_all()));
+
     loop {
         tokio::select! {
             _ = tick.tick() => {
-                let dashboard = tokio::task::spawn_blocking(collect_dashboard).await;
+                let sys_clone = Arc::clone(&sys);
 
-                let payload = match dashboard {
-                    Ok(data) => {
-                        let msg = WsMessage {
-                            msg_type: "system_update",
-                            data,
-                        };
-                        serde_json::to_string(&msg)
-                    }
-                    Err(_) => serde_json::to_string(&json!({
+                let payload = tokio::task::spawn_blocking(move || {
+                    let mut guard = sys_clone.lock().unwrap();
+                    let data = collect_dashboard(&mut guard);
+                    let msg = WsMessage { msg_type: "system_update", data };
+                    serde_json::to_string(&msg)
+                }).await;
+
+                let text = match payload {
+                    Ok(Ok(s)) => s,
+                    _ => serde_json::to_string(&json!({
                         "type": "system_update",
                         "data": null
-                    })),
+                    })).unwrap(),
                 };
 
-                let Ok(payload) = payload else { break };
-
-                if socket.send(Message::Text(payload.into())).await.is_err() {
+                if socket.send(Message::Text(text.into())).await.is_err() {
                     break;
                 }
             }
