@@ -7,7 +7,6 @@ Commande pour actualiser l'api en temp réel : cargo watch -x run -w src
 lancer les deux avec run-dev.bat
 
 TODO: 
--supprimer l'utilisateur de base automatiquement quand tu creer un premier nouvelle utilisateur
 -Ajouter des Application pour le démarage d'app
 -Corriger la fermeture des processus pour une compatibilité plus importante
 -ajouter les fonctionnalité principale : 

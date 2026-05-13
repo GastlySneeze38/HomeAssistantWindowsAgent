@@ -12,6 +12,35 @@ pub async fn health_handler() -> impl IntoResponse {
     "OK"
 }
 
+pub async fn setup_status_handler(
+    State(db): State<Arc<Database>>,
+) -> Json<serde_json::Value> {
+    let needs_setup = db.user_exists("admin").unwrap_or(false);
+    Json(json!({ "needs_setup": needs_setup }))
+}
+
+pub async fn setup_finalize_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+) -> impl IntoResponse {
+    // Vérifie que le token appartient bien à admin
+    match db.get_user_id_from_token(&token) {
+        Ok(Some(_)) if db.user_exists("admin").unwrap_or(false) => {
+            match db.force_delete_user("admin") {
+                Ok(_) => (StatusCode::OK, Json(json!({ "success": true }))),
+                Err(e) => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "success": false, "error": e.to_string() })),
+                ),
+            }
+        }
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "success": false, "error": "Unauthorized or admin not found" })),
+        ),
+    }
+}
+
 pub async fn system_handler(
     State(db): State<Arc<Database>>,
     BearerToken(token): BearerToken,
@@ -181,10 +210,15 @@ pub async fn handle_delete_user(
     match db.verify_token(&token) {
         Ok(true) => {
             match db.delete_user(&payload.username, &payload.password) {
-                Ok(_) => Ok(Json(LoginResponse {
+                Ok(true) => Ok(Json(LoginResponse {
                     success: true,
                     token: None,
                     message: "User deleted successfully".to_string(),
+                })),
+                Ok(false) => Ok(Json(LoginResponse {
+                    success: false,
+                    token: None,
+                    message: "Invalid credentials".to_string(),
                 })),
                 Err(_) => Err((
                     StatusCode::INTERNAL_SERVER_ERROR,

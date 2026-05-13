@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import LoginPage from './LoginPage';
+import SetupWizard from './SetupWizard';
 import { apiFetch } from './api';
 import { useWebSocket, WsMessage } from './hooks/useWebSocket';
 import Sidebar from './components/Sidebar';
@@ -15,6 +16,7 @@ import {
 } from './types';
 
 function App() {
+  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [isOnline, setIsOnline] = useState(false);
   const [command, setCommand] = useState('notepad.exe');
@@ -30,6 +32,13 @@ function App() {
   const [newUserPassword, setNewUserPassword] = useState('');
   const [deleteUserId, setDeleteUserId] = useState('');
   const [deleteUserPassword, setDeleteUserPassword] = useState('');
+
+  useEffect(() => {
+    fetch('http://127.0.0.1:3000/setup/status')
+      .then((r) => r.json())
+      .then((d) => setNeedsSetup(d.needs_setup === true))
+      .catch(() => setNeedsSetup(false));
+  }, []);
 
   const handleLogin = (newToken: string) => {
     setToken(newToken);
@@ -226,6 +235,24 @@ function App() {
       }
     }
   };
+
+  if (needsSetup === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-400">
+        Chargement...
+      </div>
+    );
+  }
+
+  if (needsSetup) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
+        <div className="max-w-md w-full p-8 rounded-3xl border border-slate-700 bg-slate-900/80 shadow-xl shadow-slate-900/40 backdrop-blur-md">
+          <SetupWizard onSetupComplete={() => setNeedsSetup(false)} />
+        </div>
+      </div>
+    );
+  }
 
   if (!token) {
     return (

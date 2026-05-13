@@ -1,18 +1,13 @@
 use crate::database::Database;
 
 pub fn init_default_user(db: &Database) {
-    let username = "admin";
-    let password = "admin";
+    // Crée admin/admin uniquement si aucun utilisateur n'existe encore
+    if db.has_any_users().unwrap_or(false) {
+        return;
+    }
 
-    match db.create_user(username, password) {
-        Ok(_) => {
-            println!("Utilisateur par défaut créé: {}:{}", username, password);
-        }
-        Err(_) => {
-            println!(
-                "Utilisateur '{}' existe déjà ou erreur lors de la création",
-                username
-            );
-        }
+    match db.create_user("admin", "admin") {
+        Ok(_) => println!("Aucun utilisateur trouvé — compte admin/admin créé par défaut."),
+        Err(e) => println!("Erreur création admin: {e}"),
     }
 }

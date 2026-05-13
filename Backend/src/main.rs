@@ -30,6 +30,8 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(handlers::health_handler))
+        .route("/setup/status", get(handlers::setup_status_handler))
+        .route("/setup/finalize", post(handlers::setup_finalize_handler))
         .route("/system", get(handlers::system_handler))
         .route("/launch", post(handlers::launch_handler))
         .route("/close", post(handlers::close_handler))

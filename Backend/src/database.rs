@@ -147,6 +147,18 @@ impl Database {
         Ok(None)
     }
 
+    pub fn has_any_users(&self) -> SqlResult<bool> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id FROM users LIMIT 1")?;
+        stmt.exists([])
+    }
+
+    pub fn user_exists(&self, username: &str) -> SqlResult<bool> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id FROM users WHERE username = ?1")?;
+        stmt.exists(params![username])
+    }
+
     pub fn get_user_id_from_token(&self, token: &str) -> SqlResult<Option<i32>> {
         let conn = self.conn.lock().unwrap();
         let now = Utc::now().to_rfc3339();
@@ -195,32 +207,39 @@ impl Database {
         Ok(())
     }
 
-    pub fn delete_user(&self, username: &str, password: &str) -> SqlResult<()> {
+    pub fn delete_user(&self, username: &str, password: &str) -> SqlResult<bool> {
         let conn = self.conn.lock().unwrap();
-        
-        // 1. Récupérer l'utilisateur + hash stocké
-        let mut stmt = conn.prepare(
-            "SELECT id, password_hash FROM users WHERE username = ?1"
-        )?;
 
-        let user: Option<(i32, String)> = stmt
-            .query_row(params![username], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })
-            .ok();
+        // Fermer le stmt avant d'exécuter le DELETE (SQLite ne supporte pas
+        // un autre statement actif sur la même connexion)
+        let stored_hash: Option<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT password_hash FROM users WHERE username = ?1"
+            )?;
+            stmt.query_row(params![username], |row| row.get(0)).ok()
+        };
 
-        // 2. Vérifier mot de passe avec Argon2
-        if let Some((_user_id, stored_hash)) = user {
-            if verify_password(password, &stored_hash) {
+        if let Some(hash) = stored_hash {
+            if verify_password(password, &hash) {
                 conn.execute(
                     "DELETE FROM users WHERE username = ?1",
                     params![username],
                 )?;
-
-                return Ok(());
+                return Ok(true);
             }
         }
 
+        Ok(false)
+    }
+
+    pub fn force_delete_user(&self, username: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        // Supprimer d'abord les tokens pour respecter la FK tokens -> users
+        conn.execute(
+            "DELETE FROM tokens WHERE user_id = (SELECT id FROM users WHERE username = ?1)",
+            params![username],
+        )?;
+        conn.execute("DELETE FROM users WHERE username = ?1", params![username])?;
         Ok(())
     }
 }
