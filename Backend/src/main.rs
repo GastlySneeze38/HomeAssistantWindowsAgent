@@ -6,6 +6,7 @@ mod system;
 mod auth;
 mod init;
 mod middleware;
+mod ws;
 
 use axum::{
     routing::{get, post},
@@ -37,6 +38,7 @@ async fn main() {
         .route("/logout", post(handlers::logout_handler))
         .route("/create_user", post(handlers::handle_create_user))
         .route("/delete_user", post(handlers::handle_delete_user))
+        .route("/ws", get(ws::ws_handler))
         .layer(cors)
         .with_state(db);
 

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import LoginPage from './LoginPage';
 import { apiFetch } from './api';
+import { useWebSocket, WsMessage } from './hooks/useWebSocket';
 import Sidebar from './components/Sidebar';
 import ControlSection from './components/sections/ControlSection';
 import HistorySection from './components/sections/HistorySection';
@@ -35,6 +36,19 @@ function App() {
     localStorage.setItem('token', newToken);
   };
 
+  const handleWsMessage = useCallback((msg: WsMessage) => {
+    if (msg.type === 'system_update') {
+      setSystem(msg.data);
+    }
+  }, []);
+
+  const handleWsStatus = useCallback((online: boolean) => {
+    setIsOnline(online);
+    if (!online) setSystem(null);
+  }, []);
+
+  useWebSocket({ token, onMessage: handleWsMessage, onStatusChange: handleWsStatus });
+
   const handleLogout = async () => {
     try {
       if (token) {
@@ -63,67 +77,25 @@ function App() {
   };
 
   useEffect(() => {
-    const fetchProtectedData = async () => {
+    const fetchHistory = async () => {
       if (!token) {
-        setSystem(null);
         setHistory([]);
         return;
       }
-
       try {
-        const systemResponse = await apiFetch(
-          'http://127.0.0.1:3000/system',
-          { signal: AbortSignal.timeout(2000) },
-          token
-        );
-
-        const systemData = await systemResponse.json();
-        setSystem(systemData);
-
-        const historyResponse = await apiFetch(
+        const res = await apiFetch(
           'http://127.0.0.1:3000/history',
-          { signal: AbortSignal.timeout(2000) },
+          { signal: AbortSignal.timeout(3000) },
           token
         );
-
-        const historyData = await historyResponse.json();
-        setHistory(historyData);
+        setHistory(await res.json());
       } catch (err) {
-        if (err instanceof Error) {
-          handleUnauthorized(err.message);
-        }
+        if (err instanceof Error) handleUnauthorized(err.message);
       }
     };
 
-    const checkBackendHealth = async () => {
-      try {
-        const healthResponse = await fetch('http://127.0.0.1:3000/health', {
-          signal: AbortSignal.timeout(2000),
-        });
-
-        const healthText = await healthResponse.text();
-
-        if (healthText !== 'OK') {
-          throw new Error('Backend health check failed');
-        }
-
-        setIsOnline(true);
-        await fetchProtectedData();
-      } catch {
-        setIsOnline(false);
-        setSystem(null);
-        setHistory([]);
-      }
-    };
-
-    checkBackendHealth();
-    fetchProtectedData();
-
-    const interval = setInterval(() => {
-      checkBackendHealth();
-      fetchProtectedData();
-    }, 2000);
-
+    fetchHistory();
+    const interval = setInterval(fetchHistory, 5000);
     return () => clearInterval(interval);
   }, [token]);
 
