@@ -7,6 +7,7 @@ use crate::auth::{verify_password, hash_password};
 #[derive(Serialize, Clone)]
 pub struct HistoryEntry {
     pub id: i32,
+    pub user_id: i32,
     pub action_type: String,
     pub command: String,
     pub success: bool,
@@ -24,6 +25,7 @@ impl Database {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS history (
                 id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL DEFAULT 0,
                 action_type TEXT NOT NULL,
                 command TEXT NOT NULL,
                 success BOOLEAN NOT NULL,
@@ -44,6 +46,12 @@ impl Database {
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )",
         )?;
+        // Migration: ajoute user_id si absent (DB existante)
+        let _ = conn.execute(
+            "ALTER TABLE history ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+
         Ok(Database {
             conn: Mutex::new(conn),
         })
@@ -51,6 +59,7 @@ impl Database {
 
     pub fn add_entry(
         &self,
+        user_id: i32,
         action_type: &str,
         command: &str,
         success: bool,
@@ -60,32 +69,34 @@ impl Database {
         let now = Utc::now().to_rfc3339();
 
         conn.execute(
-            "INSERT INTO history (action_type, command, success, error, timestamp) 
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![action_type, command, success, error, now],
+            "INSERT INTO history (user_id, action_type, command, success, error, timestamp)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![user_id, action_type, command, success, error, now],
         )?;
 
         Ok(())
     }
 
-    pub fn get_history(&self, limit: usize) -> SqlResult<Vec<HistoryEntry>> {
+    pub fn get_history(&self, user_id: i32, limit: usize) -> SqlResult<Vec<HistoryEntry>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, action_type, command, success, error, timestamp 
-             FROM history 
-             ORDER BY id DESC 
-             LIMIT ?1",
+            "SELECT id, user_id, action_type, command, success, error, timestamp
+             FROM history
+             WHERE user_id = ?1
+             ORDER BY id DESC
+             LIMIT ?2",
         )?;
 
         let entries = stmt
-            .query_map(params![limit as i32], |row| {
+            .query_map(params![user_id, limit as i32], |row| {
                 Ok(HistoryEntry {
                     id: row.get(0)?,
-                    action_type: row.get(1)?,
-                    command: row.get(2)?,
-                    success: row.get::<_, i32>(3)? != 0,
-                    error: row.get(4)?,
-                    timestamp: row.get(5)?,
+                    user_id: row.get(1)?,
+                    action_type: row.get(2)?,
+                    command: row.get(3)?,
+                    success: row.get::<_, i32>(4)? != 0,
+                    error: row.get(5)?,
+                    timestamp: row.get(6)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -134,6 +145,18 @@ impl Database {
         }
 
         Ok(None)
+    }
+
+    pub fn get_user_id_from_token(&self, token: &str) -> SqlResult<Option<i32>> {
+        let conn = self.conn.lock().unwrap();
+        let now = Utc::now().to_rfc3339();
+
+        let mut stmt = conn.prepare(
+            "SELECT user_id FROM tokens WHERE token = ?1 AND expires_at > ?2"
+        )?;
+        let result = stmt.query_row(params![token, now], |row| row.get(0)).ok();
+
+        Ok(result)
     }
 
     pub fn verify_token(&self, token: &str) -> SqlResult<bool> {

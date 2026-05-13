@@ -37,11 +37,12 @@ pub async fn launch_handler(
     BearerToken(token): BearerToken,
     payload: Json<LaunchRequest>,
 ) -> Result<Json<crate::launcher::LaunchResponse>, (StatusCode, Json<serde_json::Value>)> {
-    match db.verify_token(&token) {
-        Ok(true) => {
+    match db.get_user_id_from_token(&token) {
+        Ok(Some(user_id)) => {
             let response = launch_application(payload.0.clone());
-            
+
             let _ = db.add_entry(
+                user_id,
                 "launch",
                 &payload.0.command,
                 response.success,
@@ -64,10 +65,11 @@ pub async fn close_handler(
     BearerToken(token): BearerToken,
     payload: Json<CloseRequest>,
 ) -> Result<Json<crate::close::CloseResponse>, (StatusCode, Json<serde_json::Value>)> {
-    match db.verify_token(&token) {
-        Ok(true) => {
+    match db.get_user_id_from_token(&token) {
+        Ok(Some(user_id)) => {
             let response = close_application(payload.0.clone());
             let _ = db.add_entry(
+                user_id,
                 "close",
                 &payload.0.command,
                 response.success,
@@ -88,9 +90,9 @@ pub async fn history_handler(
     State(db): State<Arc<Database>>,
     BearerToken(token): BearerToken,
 ) -> Result<Json<Vec<crate::database::HistoryEntry>>, (StatusCode, Json<serde_json::Value>)> {
-    match db.verify_token(&token) {
-        Ok(true) => {
-            match db.get_history(100) {
+    match db.get_user_id_from_token(&token) {
+        Ok(Some(user_id)) => {
+            match db.get_history(user_id, 100) {
                 Ok(entries) => Ok(Json(entries)),
                 Err(_) => Ok(Json(vec![])),
             }

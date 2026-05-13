@@ -18,6 +18,7 @@ export type CloseResponse = {
 
 export type HistoryEntry = {
   id: number;
+  user_id: number;
   action_type: string;
   command: string;
   success: boolean;
