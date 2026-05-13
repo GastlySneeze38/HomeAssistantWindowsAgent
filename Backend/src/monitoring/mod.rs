@@ -1,2 +1,2 @@
-pub mod system;
+pub mod dashboard;
 pub mod ws;

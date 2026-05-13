@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
 use crate::core::database::Database;
-use crate::monitoring::system::get_available_ram;
+use crate::monitoring::dashboard::collect_dashboard;
 
 #[derive(serde::Deserialize)]
 pub struct WsQuery {
@@ -33,13 +33,11 @@ pub async fn ws_handler(
 ) -> impl IntoResponse {
     match db.verify_token(&params.token) {
         Ok(true) => ws.on_upgrade(|socket| handle_socket(socket)),
-        _ => {
-            (
-                StatusCode::UNAUTHORIZED,
-                json!({"error": "Invalid or expired token"}).to_string(),
-            )
-                .into_response()
-        }
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            json!({"error": "Invalid or expired token"}).to_string(),
+        )
+            .into_response(),
     }
 }
 
@@ -49,12 +47,23 @@ async fn handle_socket(mut socket: WebSocket) {
     loop {
         tokio::select! {
             _ = tick.tick() => {
-                let msg = WsMessage {
-                    msg_type: "system_update",
-                    data: json!({ "available_ram_gb": get_available_ram() }),
+                let dashboard = tokio::task::spawn_blocking(collect_dashboard).await;
+
+                let payload = match dashboard {
+                    Ok(data) => {
+                        let msg = WsMessage {
+                            msg_type: "system_update",
+                            data,
+                        };
+                        serde_json::to_string(&msg)
+                    }
+                    Err(_) => serde_json::to_string(&json!({
+                        "type": "system_update",
+                        "data": null
+                    })),
                 };
 
-                let Ok(payload) = serde_json::to_string(&msg) else { break };
+                let Ok(payload) = payload else { break };
 
                 if socket.send(Message::Text(payload.into())).await.is_err() {
                     break;

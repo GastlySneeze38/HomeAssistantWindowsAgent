@@ -26,7 +26,6 @@ async fn main() {
         .route("/health", get(api::handlers::health_handler))
         .route("/setup/status", get(api::handlers::setup_status_handler))
         .route("/setup/finalize", post(api::handlers::setup_finalize_handler))
-        .route("/system", get(api::handlers::system_handler))
         .route("/launch", post(api::handlers::launch_handler))
         .route("/close", post(api::handlers::close_handler))
         .route("/history", get(api::handlers::history_handler))

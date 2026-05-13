@@ -18,3 +18,8 @@ argon2 = "0.5"
 password-hash = "0.5"
 rand_core = { version = "0.6", features = ["std"] }
 async-trait = "0.1"
+nvml-wrapper = "0.10"
+windows = { version = "0.58", features = [
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Foundation",
+] }

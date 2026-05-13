@@ -4,7 +4,6 @@ use std::sync::Arc;
 use crate::actions::close::{close_application, CloseRequest};
 use crate::core::database::Database;
 use crate::actions::launcher::{launch_application, LaunchRequest};
-use crate::monitoring::system::{SystemInfo, get_available_ram};
 use crate::core::auth::{LoginRequest, LoginResponse};
 use crate::core::middleware::BearerToken;
 
@@ -37,26 +36,6 @@ pub async fn setup_finalize_handler(
             StatusCode::UNAUTHORIZED,
             Json(json!({ "success": false, "error": "Unauthorized or admin not found" })),
         ),
-    }
-}
-
-pub async fn system_handler(
-    State(db): State<Arc<Database>>,
-    BearerToken(token): BearerToken,
-) -> Result<Json<SystemInfo>, (StatusCode, Json<serde_json::Value>)> {
-    match db.verify_token(&token) {
-        Ok(true) => {
-            let available_ram_gb = get_available_ram();
-            Ok(Json(SystemInfo {
-                available_ram_gb,
-            }))
-        }
-        _ => Err((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({
-                "error": "Invalid or expired token"
-            })),
-        )),
     }
 }
 
