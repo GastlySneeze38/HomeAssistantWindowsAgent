@@ -2,7 +2,8 @@
   "name": "windows-agent-frontend",
   "version": "0.1.0",
   "private": true,
-  "main": "electron/main.js",
+  "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "cross-env ELECTRON_START_URL=http://localhost:5173 concurrently \"npm:dev:renderer\" \"npm:dev:electron\"",
     "dev:renderer": "vite",

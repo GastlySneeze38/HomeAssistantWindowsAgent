@@ -60,56 +60,71 @@ pub struct DashboardData {
     pub active_windows: Vec<WindowInfo>,
 }
 
-// ── Collecte ──────────────────────────────────────────────────────────────────
+// ── Collecteur persistant ─────────────────────────────────────────────────────
 
-pub fn collect_dashboard(sys: &mut System) -> DashboardData {
-    sys.refresh_all();
+pub struct DashboardCollector {
+    sys: System,
+    nets: Networks,
+}
 
-    // CPU
-    let cpu_usage = sys.global_cpu_info().cpu_usage();
-    let cpu_freq = sys.cpus().first().map(|c| c.frequency()).unwrap_or(0);
-    let core_count = sys.cpus().len();
-    let cpu_temp = collect_cpu_temperature();
+impl DashboardCollector {
+    pub fn new() -> Self {
+        Self {
+            sys: System::new_all(),
+            nets: Networks::new_with_refreshed_list(),
+        }
+    }
 
-    // RAM
-    let gb = |bytes: u64| bytes as f64 / (1024.0 * 1024.0 * 1024.0);
-    let ram_total = gb(sys.total_memory());
-    let ram_avail = gb(sys.available_memory());
-    let ram_used = gb(sys.used_memory());
-    let ram_pct = if sys.total_memory() > 0 {
-        sys.used_memory() as f32 / sys.total_memory() as f32 * 100.0
-    } else {
-        0.0
-    };
+    pub fn collect(&mut self) -> DashboardData {
+        self.sys.refresh_all();
+        self.nets.refresh();
 
-    // Réseau
-    let nets = Networks::new_with_refreshed_list();
-    let network = nets
-        .iter()
-        .map(|(name, data)| NetworkInfo {
-            name: name.clone(),
-            received_kb: data.received() as f64 / 1024.0,
-            transmitted_kb: data.transmitted() as f64 / 1024.0,
-        })
-        .collect();
+        // CPU
+        let cpu_usage = self.sys.global_cpu_info().cpu_usage();
+        let cpu_freq = self.sys.cpus().first().map(|c| c.frequency()).unwrap_or(0);
+        let core_count = self.sys.cpus().len();
+        let cpu_temp = collect_cpu_temperature();
 
-    DashboardData {
-        cpu: CpuInfo {
-            usage_percent: cpu_usage,
-            frequency_mhz: cpu_freq,
-            core_count,
-            temperature_celsius: cpu_temp,
-        },
-        ram: RamInfo {
-            total_gb: ram_total,
-            used_gb: ram_used,
-            available_gb: ram_avail,
-            usage_percent: ram_pct,
-        },
-        network,
-        uptime_seconds: System::uptime(),
-        gpu: collect_gpu_info(),
-        active_windows: collect_active_windows(),
+        // RAM
+        let gb = |bytes: u64| bytes as f64 / (1024.0 * 1024.0 * 1024.0);
+        let ram_total = gb(self.sys.total_memory());
+        let ram_avail = gb(self.sys.available_memory());
+        let ram_used = gb(self.sys.used_memory());
+        let ram_pct = if self.sys.total_memory() > 0 {
+            self.sys.used_memory() as f32 / self.sys.total_memory() as f32 * 100.0
+        } else {
+            0.0
+        };
+
+        // Réseau — uniquement les interfaces qui font passer des données
+        let network = self.nets
+            .iter()
+            .filter(|(_, data)| data.received() > 0 || data.transmitted() > 0)
+            .map(|(name, data)| NetworkInfo {
+                name: name.clone(),
+                received_kb: data.received() as f64 / 1024.0,
+                transmitted_kb: data.transmitted() as f64 / 1024.0,
+            })
+            .collect();
+
+        DashboardData {
+            cpu: CpuInfo {
+                usage_percent: cpu_usage,
+                frequency_mhz: cpu_freq,
+                core_count,
+                temperature_celsius: cpu_temp,
+            },
+            ram: RamInfo {
+                total_gb: ram_total,
+                used_gb: ram_used,
+                available_gb: ram_avail,
+                usage_percent: ram_pct,
+            },
+            network,
+            uptime_seconds: System::uptime(),
+            gpu: collect_gpu_info(),
+            active_windows: collect_active_windows(),
+        }
     }
 }
 

@@ -9,11 +9,10 @@ use axum::{
 use serde::Serialize;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
-use sysinfo::System;
 use tokio::time::{interval, Duration};
 
 use crate::core::database::Database;
-use crate::monitoring::dashboard::collect_dashboard;
+use crate::monitoring::dashboard::DashboardCollector;
 
 #[derive(serde::Deserialize)]
 pub struct WsQuery {
@@ -45,17 +44,16 @@ pub async fn ws_handler(
 async fn handle_socket(mut socket: WebSocket) {
     let mut tick = interval(Duration::from_secs(1));
 
-    // System partagé entre les ticks — le delta CPU sera correct dès le 2e tick
-    let sys = Arc::new(Mutex::new(System::new_all()));
+    // Collecteur persistant — System et Networks réutilisés à chaque tick
+    let collector = Arc::new(Mutex::new(DashboardCollector::new()));
 
     loop {
         tokio::select! {
             _ = tick.tick() => {
-                let sys_clone = Arc::clone(&sys);
+                let col = Arc::clone(&collector);
 
                 let payload = tokio::task::spawn_blocking(move || {
-                    let mut guard = sys_clone.lock().unwrap();
-                    let data = collect_dashboard(&mut guard);
+                    let data = col.lock().unwrap().collect();
                     let msg = WsMessage { msg_type: "system_update", data };
                     serde_json::to_string(&msg)
                 }).await;

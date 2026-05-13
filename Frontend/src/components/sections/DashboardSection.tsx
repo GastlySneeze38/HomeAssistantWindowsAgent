@@ -30,6 +30,12 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function formatBytes(kb: number): string {
+  if (kb >= 1024 * 1024) return `${(kb / (1024 * 1024)).toFixed(2)} Go/s`;
+  if (kb >= 1024) return `${(kb / 1024).toFixed(2)} Mo/s`;
+  return `${kb.toFixed(0)} Ko/s`;
+}
+
 function formatUptime(seconds: number): string {
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
@@ -107,8 +113,8 @@ export default function DashboardSection({ data }: Props) {
             <div key={n.name} className="flex justify-between items-center py-2 text-sm">
               <span className="text-slate-300 font-medium truncate max-w-[40%]">{n.name}</span>
               <div className="flex gap-4 text-slate-400">
-                <span>↓ {n.received_kb.toFixed(0)} Ko</span>
-                <span>↑ {n.transmitted_kb.toFixed(0)} Ko</span>
+                <span>↓ {formatBytes(n.received_kb)}</span>
+                <span>↑ {formatBytes(n.transmitted_kb)}</span>
               </div>
             </div>
           ))}

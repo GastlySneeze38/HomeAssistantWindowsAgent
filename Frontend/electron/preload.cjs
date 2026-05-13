@@ -1,5 +1,6 @@
 const { contextBridge } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
-  ping: () => 'pong',
+  platform: process.platform,
+  version: process.env.npm_package_version ?? 'dev',
 });
