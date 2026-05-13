@@ -7,7 +7,8 @@ Commande pour actualiser l'api en temp réel : cargo watch -x run -w src
 lancer les deux avec run-dev.bat
 
 TODO: 
--rajouter l'interface d'historique d'action et le relier selon l'uuid qui l'a executer
+-relier l'historique selon l'uuid qui l'a executer
+-modifier l'interface utilisateur
 -ajouter websoket pour plutard ( l'utiliser pour la ram dispo )
 -supprimer l'utilisateur de base automatiquement quand tu creer un premier nouvelle utilisateur
 -Ajouter des Application pour le démarage d'app
