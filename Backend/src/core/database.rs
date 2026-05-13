@@ -2,7 +2,7 @@ use chrono::Utc;
 use rusqlite::{params, Connection, Result as SqlResult};
 use serde::Serialize;
 use std::sync::Mutex;
-use crate::auth::{verify_password, hash_password};
+use crate::core::auth::{verify_password, hash_password};
 
 #[derive(Serialize, Clone)]
 pub struct HistoryEntry {
@@ -111,11 +111,9 @@ impl Database {
         Ok(())
     }
 
-    // --- Auth related methods --- Argon2 + selt
     pub fn login(&self, username: &str, password: &str) -> SqlResult<Option<String>> {
         let conn = self.conn.lock().unwrap();
 
-        // 1. Récupérer l'utilisateur + hash stocké
         let mut stmt = conn.prepare(
             "SELECT id, password_hash FROM users WHERE username = ?1"
         )?;
@@ -126,10 +124,8 @@ impl Database {
             })
             .ok();
 
-        // 2. Vérifier mot de passe avec Argon2
         if let Some((user_id, stored_hash)) = user {
             if verify_password(password, &stored_hash) {
-                // 3. Générer token si OK
                 let token = uuid::Uuid::new_v4().to_string();
                 let created_at = Utc::now().to_rfc3339();
                 let expires_at = (Utc::now() + chrono::Duration::days(7)).to_rfc3339();
@@ -196,8 +192,6 @@ impl Database {
 
     pub fn create_user(&self, username: &str, password: &str) -> SqlResult<()> {
         let conn = self.conn.lock().unwrap();
-        
-        // Hash sécurisé Argon2 (avec salt)
         let password_hash = hash_password(password);
 
         conn.execute(
@@ -210,8 +204,6 @@ impl Database {
     pub fn delete_user(&self, username: &str, password: &str) -> SqlResult<bool> {
         let conn = self.conn.lock().unwrap();
 
-        // Fermer le stmt avant d'exécuter le DELETE (SQLite ne supporte pas
-        // un autre statement actif sur la même connexion)
         let stored_hash: Option<String> = {
             let mut stmt = conn.prepare(
                 "SELECT password_hash FROM users WHERE username = ?1"
@@ -234,7 +226,6 @@ impl Database {
 
     pub fn force_delete_user(&self, username: &str) -> SqlResult<()> {
         let conn = self.conn.lock().unwrap();
-        // Supprimer d'abord les tokens pour respecter la FK tokens -> users
         conn.execute(
             "DELETE FROM tokens WHERE user_id = (SELECT id FROM users WHERE username = ?1)",
             params![username],

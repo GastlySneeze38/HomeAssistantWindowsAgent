@@ -11,8 +11,8 @@ use serde_json::json;
 use std::sync::Arc;
 use tokio::time::{interval, Duration};
 
-use crate::database::Database;
-use crate::system::get_available_ram;
+use crate::core::database::Database;
+use crate::monitoring::system::get_available_ram;
 
 #[derive(serde::Deserialize)]
 pub struct WsQuery {
@@ -34,7 +34,6 @@ pub async fn ws_handler(
     match db.verify_token(&params.token) {
         Ok(true) => ws.on_upgrade(|socket| handle_socket(socket)),
         _ => {
-            // Refuse la connexion WS si token invalide
             (
                 StatusCode::UNAUTHORIZED,
                 json!({"error": "Invalid or expired token"}).to_string(),

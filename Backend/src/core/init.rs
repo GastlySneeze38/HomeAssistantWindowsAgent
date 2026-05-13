@@ -1,4 +1,4 @@
-use crate::database::Database;
+use crate::core::database::Database;
 
 pub fn init_default_user(db: &Database) {
     // Crée admin/admin uniquement si aucun utilisateur n'existe encore

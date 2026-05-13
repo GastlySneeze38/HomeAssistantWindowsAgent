@@ -27,7 +27,6 @@ pub fn close_application(request: CloseRequest) -> CloseResponse {
         }
     };
 
-    // Vérifier que le processus existe vraiment avant de le tuer
     if !process_exists(&process_name) {
         return CloseResponse {
             success: false,
@@ -76,32 +75,27 @@ fn process_exists(process_name: &str) -> bool {
 fn find_process_name(input: &str) -> Option<String> {
     let lower_input = input.to_lowercase().trim().to_string();
 
-    // Étape 1: Vérifier les alias connus
     if let Some(mapped) = get_process_alias(&lower_input) {
         if process_exists(&mapped) {
             return Some(mapped);
         }
     }
 
-    // Étape 2: Si l'input contient déjà .exe, l'utiliser directement
     if lower_input.ends_with(".exe") {
         if process_exists(&lower_input) {
             return Some(lower_input);
         }
     }
 
-    // Étape 3: Essayer de chercher dans les processus actuels
     if let Some(found) = search_running_process(&lower_input) {
         return Some(found);
     }
 
-    // Étape 4: Ajouter .exe et vérifier
     let with_exe = format!("{}.exe", lower_input);
     if process_exists(&with_exe) {
         return Some(with_exe);
     }
 
-    // Étape 5: Essayer avec majuscule initiale + .exe
     let capitalized = format!("{}.exe", lower_input.chars().next().unwrap().to_uppercase().to_string() + &lower_input[1..]);
     if process_exists(&capitalized) {
         return Some(capitalized);
@@ -123,13 +117,11 @@ fn get_process_alias(input: &str) -> Option<String> {
 
     for (alias, processes) in aliases {
         if input.contains(alias) {
-            // Retourner le premier processus qui existe réellement
             for process in &processes {
                 if process_exists(process) {
                     return Some(process.to_string());
                 }
             }
-            // Si aucun n'existe, retourner le premier de la liste
             return Some(processes[0].to_string());
         }
     }
@@ -147,7 +139,6 @@ fn search_running_process(input: &str) -> Option<String> {
     for line in task_list.lines() {
         let line_lower = line.to_lowercase();
         if line_lower.contains(input) {
-            // Extraire le nom du processus (première colonne)
             if let Some(process_name) = line.split_whitespace().next() {
                 return Some(process_name.to_string());
             }

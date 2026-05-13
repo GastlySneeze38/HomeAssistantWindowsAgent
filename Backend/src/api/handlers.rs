@@ -1,12 +1,12 @@
 use axum::{extract::{Json, State}, response::IntoResponse, http::StatusCode};
 use serde_json::{json, Value};
 use std::sync::Arc;
-use crate::close::{close_application, CloseRequest};
-use crate::database::Database;
-use crate::launcher::{launch_application, LaunchRequest};
-use crate::system::{SystemInfo, get_available_ram};
-use crate::auth::{LoginRequest, LoginResponse};
-use crate::middleware::BearerToken;
+use crate::actions::close::{close_application, CloseRequest};
+use crate::core::database::Database;
+use crate::actions::launcher::{launch_application, LaunchRequest};
+use crate::monitoring::system::{SystemInfo, get_available_ram};
+use crate::core::auth::{LoginRequest, LoginResponse};
+use crate::core::middleware::BearerToken;
 
 pub async fn health_handler() -> impl IntoResponse {
     "OK"
@@ -23,7 +23,6 @@ pub async fn setup_finalize_handler(
     State(db): State<Arc<Database>>,
     BearerToken(token): BearerToken,
 ) -> impl IntoResponse {
-    // Vérifie que le token appartient bien à admin
     match db.get_user_id_from_token(&token) {
         Ok(Some(_)) if db.user_exists("admin").unwrap_or(false) => {
             match db.force_delete_user("admin") {
@@ -65,7 +64,7 @@ pub async fn launch_handler(
     State(db): State<Arc<Database>>,
     BearerToken(token): BearerToken,
     payload: Json<LaunchRequest>,
-) -> Result<Json<crate::launcher::LaunchResponse>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<crate::actions::launcher::LaunchResponse>, (StatusCode, Json<serde_json::Value>)> {
     match db.get_user_id_from_token(&token) {
         Ok(Some(user_id)) => {
             let response = launch_application(payload.0.clone());
@@ -93,7 +92,7 @@ pub async fn close_handler(
     State(db): State<Arc<Database>>,
     BearerToken(token): BearerToken,
     payload: Json<CloseRequest>,
-) -> Result<Json<crate::close::CloseResponse>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<crate::actions::close::CloseResponse>, (StatusCode, Json<serde_json::Value>)> {
     match db.get_user_id_from_token(&token) {
         Ok(Some(user_id)) => {
             let response = close_application(payload.0.clone());
@@ -118,7 +117,7 @@ pub async fn close_handler(
 pub async fn history_handler(
     State(db): State<Arc<Database>>,
     BearerToken(token): BearerToken,
-) -> Result<Json<Vec<crate::database::HistoryEntry>>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<Vec<crate::core::database::HistoryEntry>>, (StatusCode, Json<serde_json::Value>)> {
     match db.get_user_id_from_token(&token) {
         Ok(Some(user_id)) => {
             match db.get_history(user_id, 100) {
@@ -139,7 +138,6 @@ pub async fn login_handler(
     State(db): State<Arc<Database>>,
     Json(payload): Json<LoginRequest>,
 ) -> Json<LoginResponse> {
-    
     match db.login(&payload.username, &payload.password) {
         Ok(Some(token)) => Json(LoginResponse {
             success: true,
@@ -163,7 +161,6 @@ pub async fn logout_handler(
     State(db): State<Arc<Database>>,
     bearer: BearerToken,
 ) -> StatusCode {
-
     match db.delete_token(&bearer.0) {
         Ok(_) => StatusCode::OK,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -175,7 +172,6 @@ pub async fn handle_create_user(
     BearerToken(token): BearerToken,
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, Json<Value>)> {
-    
     match db.verify_token(&token) {
         Ok(true) => {
             match db.create_user(&payload.username, &payload.password) {
@@ -206,7 +202,6 @@ pub async fn handle_delete_user(
     BearerToken(token): BearerToken,
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, (StatusCode, Json<Value>)> {
-    
     match db.verify_token(&token) {
         Ok(true) => {
             match db.delete_user(&payload.username, &payload.password) {
@@ -235,6 +230,4 @@ pub async fn handle_delete_user(
             })),
         )),
     }
-
-    
 }
