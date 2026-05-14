@@ -3,6 +3,7 @@ mod api;
 mod core;
 mod monitoring;
 
+use actions::openrgb_manager::OpenRgbManager;
 use axum::{
     routing::{get, post},
     Router,
@@ -14,8 +15,11 @@ use tower_http::cors::{Any, CorsLayer};
 #[tokio::main]
 async fn main() {
     let db = Arc::new(Database::new().expect("Falha ao inicializar banco de dados"));
-
     core::init::init_default_user(&db);
+
+    // Start OpenRGB headless server (downloads automatically if missing)
+    let openrgb = Arc::new(OpenRgbManager::new());
+    openrgb.start().await;
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -46,10 +50,13 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("Listening on http://{}", addr);
 
-    axum::serve(
-        tokio::net::TcpListener::bind(addr).await.unwrap(),
-        app,
-    )
-    .await
-    .unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            tokio::signal::ctrl_c().await.ok();
+            openrgb.stop().await;
+        })
+        .await
+        .unwrap();
 }
