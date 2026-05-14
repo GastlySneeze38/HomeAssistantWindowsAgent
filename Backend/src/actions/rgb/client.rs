@@ -86,10 +86,13 @@ impl OrgbClient {
             .await?;
 
         let (_, _, ver_data) = client.recv_packet().await?;
-        let negotiated = if ver_data.len() >= 4 {
+        // Le serveur répond avec SA propre version max (pas le minimum des deux).
+        // La version effective utilisée pour le packing des données est :
+        //   min(notre_version, version_serveur)
+        // Source : OpenRGB wiki — "the lower of the two versions is used"
+        let server_version = if ver_data.len() >= 4 {
             u32::from_le_bytes(ver_data[0..4].try_into().unwrap())
         } else {
-            // Serveur très ancien (v0) qui ne répond pas à la négociation
             eprintln!(
                 "[RGB][client] ⚠️  Réponse de négociation trop courte ({} octets) \
                  → on suppose v0",
@@ -98,11 +101,15 @@ impl OrgbClient {
             0
         };
 
-        client.negotiated_version = negotiated;
+        // C'est le min qui détermine le format binaire réel des données reçues
+        let negotiated = server_version.min(PROTOCOL_VERSION_REQUESTED);
+
         eprintln!(
-            "[RGB][client] Protocole négocié : v{negotiated} \
-             (on avait demandé v{PROTOCOL_VERSION_REQUESTED})"
+            "[RGB][client] Serveur : v{server_version} — on avait demandé v{PROTOCOL_VERSION_REQUESTED} \
+             → version effective : v{negotiated}"
         );
+
+        client.negotiated_version = negotiated;
 
         Ok(client)
     }

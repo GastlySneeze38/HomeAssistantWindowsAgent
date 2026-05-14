@@ -69,9 +69,11 @@ pub const PROTOCOL_VERSION_REQUESTED: u32 = 3;
 // Ces bits sont dans le champ `flags` (u32) de chaque mode.
 // Ils contrôlent quels champs optionnels sont présents dans le binaire.
 
-/// Le mode supporte le réglage de luminosité.
-/// Si ce bit est activé ET protocol >= 3, les champs brightness_min/max/value
-/// sont présents dans la structure du mode (3 × u32 supplémentaires).
+/// Le mode supporte le réglage de luminosité (affiché dans l'UI OpenRGB).
+/// ⚠️  Ce flag N'EST PAS une condition de présence dans le binaire :
+/// en v3+, les champs brightness_min/max/value sont TOUJOURS sérialisés,
+/// que ce flag soit activé ou non.
+#[allow(dead_code)]
 pub const MODE_FLAG_HAS_BRIGHTNESS: u32 = 1 << 7; // 0x80
 
 // ── Format des couleurs ───────────────────────────────────────────────────────
