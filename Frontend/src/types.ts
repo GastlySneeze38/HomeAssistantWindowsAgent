@@ -66,4 +66,11 @@ export type HistoryEntry = {
   timestamp: string;
 };
 
-export type View = 'dashboard' | 'control' | 'history' | 'users';
+export type AppEntry = {
+  id: number;
+  name: string;
+  path: string;
+  args: string | null;
+};
+
+export type View = 'dashboard' | 'control' | 'history' | 'users' | 'apps';

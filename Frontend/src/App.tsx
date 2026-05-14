@@ -8,7 +8,9 @@ import ControlSection from './components/sections/ControlSection';
 import HistorySection from './components/sections/HistorySection';
 import UsersSection from './components/sections/UsersSection';
 import DashboardSection from './components/sections/DashboardSection';
+import AppsSection from './components/sections/AppsSection';
 import {
+  AppEntry,
   CloseResponse,
   DashboardData,
   HistoryEntry,
@@ -29,6 +31,8 @@ function App() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
   const [activeView, setActiveView] = useState<View>('dashboard');
+
+  const [apps, setApps] = useState<AppEntry[]>([]);
 
   const [newUserId, setNewUserId] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
@@ -95,6 +99,44 @@ function App() {
       setError("Erreur lors de l'appel au backend : " + errMessage);
       setIsOnline(false);
     }
+  };
+
+  // Apps fetch
+  const fetchApps = useCallback(async () => {
+    if (!token) { setApps([]); return; }
+    try {
+      const res = await apiFetch('http://127.0.0.1:3000/apps', {}, token);
+      setApps(await res.json());
+    } catch (err) {
+      if (err instanceof Error && err.message === 'UNAUTHORIZED') handleLogout();
+    }
+  }, [token]);
+
+  useEffect(() => { fetchApps(); }, [fetchApps]);
+
+  const addApp = async (name: string, path: string, args: string) => {
+    if (!token) return;
+    await apiFetch('http://127.0.0.1:3000/apps/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, path, args: args || null }),
+    }, token);
+    await fetchApps();
+  };
+
+  const deleteApp = async (name: string) => {
+    if (!token) return;
+    await apiFetch('http://127.0.0.1:3000/apps/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }, token);
+    await fetchApps();
+  };
+
+  const launchAppByName = (name: string) => {
+    setCommand(name);
+    setActiveView('control');
   };
 
   // History poll
@@ -233,6 +275,7 @@ function App() {
             {activeView === 'control' && (
               <ControlSection
                 isOnline={isOnline}
+                apps={apps}
                 command={command}
                 setCommand={setCommand}
                 closeCommand={closeCommand}
@@ -242,6 +285,15 @@ function App() {
                 error={error}
                 onLaunch={launchApp}
                 onClose={closeApp}
+              />
+            )}
+
+            {activeView === 'apps' && (
+              <AppsSection
+                apps={apps}
+                onAdd={addApp}
+                onDelete={deleteApp}
+                onLaunch={launchAppByName}
               />
             )}
 

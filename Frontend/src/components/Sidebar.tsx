@@ -11,8 +11,9 @@ type SidebarProps = {
 const NAV_ITEMS: { view: View; label: string }[] = [
   { view: 'dashboard', label: 'Dashboard système' },
   { view: 'control',   label: "Contrôle de l'appareil" },
+  { view: 'apps',      label: 'Applications' },
   { view: 'history',   label: 'Historique des actions' },
-  { view: 'users',     label: "Création d'utilisateur" },
+  { view: 'users',     label: "Gestion utilisateurs" },
 ];
 
 export default function Sidebar({
