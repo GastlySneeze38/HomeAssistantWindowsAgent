@@ -1,11 +1,24 @@
 use axum::{extract::{Json, State}, response::IntoResponse, http::StatusCode};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use crate::actions::close::{close_application, CloseRequest};
-use crate::core::database::Database;
+use crate::core::database::{Database, AppEntry};
 use crate::actions::launcher::{launch_application, LaunchRequest};
 use crate::core::auth::{LoginRequest, LoginResponse};
 use crate::core::middleware::BearerToken;
+
+#[derive(Deserialize)]
+pub struct AppRequest {
+    pub name: String,
+    pub path: String,
+    pub args: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct AppDeleteRequest {
+    pub name: String,
+}
 
 pub async fn health_handler() -> impl IntoResponse {
     "OK"
@@ -46,7 +59,7 @@ pub async fn launch_handler(
 ) -> Result<Json<crate::actions::launcher::LaunchResponse>, (StatusCode, Json<serde_json::Value>)> {
     match db.get_user_id_from_token(&token) {
         Ok(Some(user_id)) => {
-            let response = launch_application(payload.0.clone());
+            let response = launch_application(payload.0.clone(), &db);
 
             let _ = db.add_entry(
                 user_id,
@@ -208,5 +221,59 @@ pub async fn handle_delete_user(
                 "error": "Invalid or expired token"
             })),
         )),
+    }
+}
+
+pub async fn get_apps_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+) -> Result<Json<Vec<AppEntry>>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.get_apps() {
+            Ok(apps) => Ok(Json(apps)),
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": e.to_string() })),
+            )),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn add_app_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<AppRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.add_app(&payload.name, &payload.path, payload.args.as_deref()) {
+            Ok(_) => Ok(Json(json!({ "success": true }))),
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": e.to_string() })),
+            )),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn delete_app_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<AppDeleteRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.delete_app(&payload.name) {
+            Ok(true) => Ok(Json(json!({ "success": true }))),
+            Ok(false) => Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("App '{}' non trouvée", payload.name) })),
+            )),
+            Err(e) => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": e.to_string() })),
+            )),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
     }
 }

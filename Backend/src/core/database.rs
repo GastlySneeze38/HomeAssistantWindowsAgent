@@ -233,4 +233,71 @@ impl Database {
         conn.execute("DELETE FROM users WHERE username = ?1", params![username])?;
         Ok(())
     }
+
+    // --- Apps management ---
+
+    pub fn init_apps_table(&self) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS apps (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                path TEXT NOT NULL,
+                args TEXT
+            )",
+        )
+    }
+
+    pub fn get_apps(&self) -> SqlResult<Vec<AppEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, name, path, args FROM apps ORDER BY name")?;
+        let entries = stmt
+            .query_map([], |row| {
+                Ok(AppEntry {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    path: row.get(2)?,
+                    args: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
+    pub fn get_app_by_name(&self, name: &str) -> SqlResult<Option<AppEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, name, path, args FROM apps WHERE LOWER(name) = LOWER(?1)")?;
+        let result = stmt.query_row(params![name], |row| {
+            Ok(AppEntry {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                path: row.get(2)?,
+                args: row.get(3)?,
+            })
+        }).ok();
+        Ok(result)
+    }
+
+    pub fn add_app(&self, name: &str, path: &str, args: Option<&str>) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO apps (name, path, args) VALUES (?1, ?2, ?3)",
+            params![name, path, args],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_app(&self, name: &str) -> SqlResult<bool> {
+        let conn = self.conn.lock().unwrap();
+        let rows = conn.execute("DELETE FROM apps WHERE LOWER(name) = LOWER(?1)", params![name])?;
+        Ok(rows > 0)
+    }
+}
+
+#[derive(Serialize, Clone)]
+pub struct AppEntry {
+    pub id: i32,
+    pub name: String,
+    pub path: String,
+    pub args: Option<String>,
 }
