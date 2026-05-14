@@ -1,5 +1,5 @@
 // Direct OpenRGB SDK protocol implementation (no external crate).
-// Negotiates protocol v1 for a stable serialisation format.
+// Negotiates protocol v3 (brightness in modes, height+width in zone matrix).
 use serde::Serialize;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -13,8 +13,8 @@ const CMD_REQUEST_PROTOCOL_VERSION: u32 = 40;
 const CMD_SET_CLIENT_NAME: u32 = 50;
 const CMD_UPDATE_LEDS: u32 = 1100;
 const IO_TIMEOUT: Duration = Duration::from_secs(3);
-// We negotiate v1 so the server serialises modes without brightness fields.
-const PROTOCOL_VERSION: u32 = 1;
+// v3: adds brightness fields in modes + separate matrix_height/width in zones
+const PROTOCOL_VERSION: u32 = 3;
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -199,13 +199,15 @@ impl OrgbClient {
 //   u16  num_modes
 //     mode×:  str name, i32 value, u32 flags,
 //             u32 speed_min, u32 speed_max,
+//             u32 brightness_min, u32 brightness_max,   ← v2+
 //             u32 colors_min, u32 colors_max,
-//             u32 speed, u32 direction, u32 color_mode,
+//             u32 speed, u32 brightness,                ← v2+
+//             u32 direction, u32 color_mode,
 //             u16 num_colors, num_colors×u32 colors
 //   u16  num_zones
 //     zone×:  str name, u32 type,
 //             u32 leds_min, u32 leds_max, u32 leds_count,
-//             u16 matrix_height, u16 matrix_width, u16 matrix_len,
+//             u16 matrix_height, u16 matrix_width, u16 matrix_len,  ← v3+
 //             matrix_len bytes
 //   u16  num_leds   ← what we need
 //   led×:  str name, u32 value
@@ -225,15 +227,18 @@ fn parse_controller_info(data: &[u8]) -> Result<(String, usize), String> {
     c.read_str()?; // serial
     c.read_str()?; // location
 
-    // Modes (protocol v1 — no brightness fields)
+    // Modes (protocol v3 — includes brightness fields)
     let num_modes = c.read_u16()? as usize;
     for _ in 0..num_modes {
-        c.read_str()?; // name
-        c.skip(4)?; // value i32
-        c.skip(4)?; // flags
+        c.read_str()?;  // name
+        c.skip(4)?;     // value (i32)
+        c.skip(4)?;     // flags
         c.skip(4 * 2)?; // speed_min, speed_max
+        c.skip(4 * 2)?; // brightness_min, brightness_max  ← v2+
         c.skip(4 * 2)?; // colors_min, colors_max
-        c.skip(4 * 3)?; // speed, direction, color_mode
+        c.skip(4)?;     // speed
+        c.skip(4)?;     // brightness  ← v2+
+        c.skip(4 * 2)?; // direction, color_mode
         let num_colors = c.read_u16()? as usize;
         c.skip(num_colors * 4)?;
     }

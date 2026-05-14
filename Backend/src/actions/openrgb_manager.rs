@@ -39,7 +39,7 @@ impl OpenRgbManager {
     /// Start OpenRGB headless server. Downloads the binary if missing.
     /// No-op if OpenRGB is already running on port 6742 (external instance).
     pub async fn start(&self) {
-        if is_port_open(6742).await {
+        if is_openrgb_ready().await {
             println!("[RGB] OpenRGB already running on :6742, skipping managed start");
             return;
         }
@@ -74,7 +74,7 @@ impl OpenRgbManager {
         let mut bound = false;
         for i in 1..=12 {
             tokio::time::sleep(Duration::from_millis(500)).await;
-            if is_port_open(6742).await {
+            if is_openrgb_ready().await {
                 bound = true;
                 println!("[RGB] OpenRGB SDK ready on :6742 (after {}ms)", i * 500);
                 break;
@@ -109,10 +109,16 @@ fn resolve_exe_path() -> PathBuf {
     base.join("tools").join("openrgb").join("OpenRGB.exe")
 }
 
-async fn is_port_open(port: u16) -> bool {
-    tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
-        .await
-        .is_ok()
+/// Check if the OpenRGB SDK server is responding by sending the proper magic handshake.
+/// Using a raw TcpStream connect (without magic bytes) would trigger a warning in OpenRGB logs.
+async fn is_openrgb_ready() -> bool {
+    use tokio::io::AsyncWriteExt;
+    let Ok(mut stream) = tokio::net::TcpStream::connect("127.0.0.1:6742").await else {
+        return false;
+    };
+    // Send the ORGB magic so OpenRGB doesn't log a "recv_select failed" warning
+    let _ = stream.write_all(b"ORGB\x00\x00\x00\x00\x32\x00\x00\x00\x1a\x00\x00\x00HomeAssistantWindowsAgent\0").await;
+    true
 }
 
 async fn ensure_downloaded(dest: &Path) -> Result<(), String> {
