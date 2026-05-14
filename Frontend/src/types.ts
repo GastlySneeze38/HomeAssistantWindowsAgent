@@ -73,4 +73,10 @@ export type AppEntry = {
   args: string | null;
 };
 
-export type View = 'dashboard' | 'control' | 'history' | 'users' | 'apps';
+export type RgbDevice = {
+  id: number;
+  name: string;
+  led_count: number;
+};
+
+export type View = 'dashboard' | 'control' | 'history' | 'users' | 'apps' | 'rgb';

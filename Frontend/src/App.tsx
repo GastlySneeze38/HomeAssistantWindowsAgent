@@ -9,6 +9,7 @@ import HistorySection from './components/sections/HistorySection';
 import UsersSection from './components/sections/UsersSection';
 import DashboardSection from './components/sections/DashboardSection';
 import AppsSection from './components/sections/AppsSection';
+import RgbSection from './components/sections/RgbSection';
 import {
   AppEntry,
   CloseResponse,
@@ -295,6 +296,10 @@ function App() {
                 onDelete={deleteApp}
                 onLaunch={launchAppByName}
               />
+            )}
+
+            {activeView === 'rgb' && token && (
+              <RgbSection token={token} onUnauthorized={handleLogout} />
             )}
 
             {activeView === 'history' && <HistorySection history={history} />}

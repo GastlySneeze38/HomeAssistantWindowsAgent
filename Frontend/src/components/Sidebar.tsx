@@ -12,6 +12,7 @@ const NAV_ITEMS: { view: View; label: string }[] = [
   { view: 'dashboard', label: 'Dashboard système' },
   { view: 'control',   label: "Contrôle de l'appareil" },
   { view: 'apps',      label: 'Applications' },
+  { view: 'rgb',       label: 'Contrôle RGB' },
   { view: 'history',   label: 'Historique des actions' },
   { view: 'users',     label: "Gestion utilisateurs" },
 ];
@@ -26,7 +27,9 @@ export default function Sidebar({
   const navButtonClass = (view: View) =>
     `w-full rounded-2xl px-4 py-3 text-left font-medium transition ${
       activeView === view
-        ? 'bg-cyan-500 text-slate-950'
+        ? view === 'rgb'
+          ? 'bg-purple-500 text-slate-950'
+          : 'bg-cyan-500 text-slate-950'
         : 'bg-slate-900 text-slate-200 hover:bg-slate-800'
     }`;
 

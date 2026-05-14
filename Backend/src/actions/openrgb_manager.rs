@@ -6,21 +6,21 @@ use std::time::Duration;
 use tokio::process::Child;
 use tokio::sync::Mutex;
 
-// GitLab API response structs
-#[derive(Deserialize)]
-struct GitLabRelease {
-    assets: GitLabAssets,
-}
+// Hides the console window on Windows — replaces the removed --headless flag
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+// Codeberg (Gitea) API response structs
 #[derive(Deserialize)]
-struct GitLabAssets {
-    links: Vec<GitLabLink>,
-}
-
-#[derive(Deserialize)]
-struct GitLabLink {
+struct CodebergRelease {
     name: String,
-    url: String,
+    assets: Vec<CodebergAsset>,
+}
+
+#[derive(Deserialize)]
+struct CodebergAsset {
+    name: String,
+    browser_download_url: String,
 }
 
 pub struct OpenRgbManager {
@@ -49,17 +49,41 @@ impl OpenRgbManager {
             return;
         }
 
-        match tokio::process::Command::new(&self.exe_path)
-            .args(["--server", "--headless"])
-            .spawn()
-        {
-            Ok(child) => {
-                *self.child.lock().await = Some(child);
-                // Give OpenRGB time to bind the SDK port
-                tokio::time::sleep(Duration::from_millis(1500)).await;
-                println!("[RGB] OpenRGB server started");
+        let mut cmd = tokio::process::Command::new(&self.exe_path);
+        cmd.args(["--server", "--noautoconnect"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        // Hide the GUI window — replaces the removed --headless flag
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
+        let result = cmd.spawn();
+
+        let child = match result {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[RGB] Failed to spawn OpenRGB: {e}");
+                return;
             }
-            Err(e) => eprintln!("[RGB] Failed to spawn OpenRGB: {e}"),
+        };
+
+        *self.child.lock().await = Some(child);
+
+        // Poll port 6742 for up to 6 seconds (OpenRGB can be slow to initialize)
+        let mut bound = false;
+        for i in 1..=12 {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            if is_port_open(6742).await {
+                bound = true;
+                println!("[RGB] OpenRGB SDK ready on :6742 (after {}ms)", i * 500);
+                break;
+            }
+        }
+
+        if !bound {
+            eprintln!("[RGB] OpenRGB started but port 6742 never opened — it may have crashed.");
+            eprintln!("[RGB] Tip: try running {:?} --server --headless --noautoconnect manually to see the error.", self.exe_path);
         }
     }
 
@@ -81,7 +105,8 @@ fn resolve_exe_path() -> PathBuf {
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("tools").join("OpenRGB.exe")
+    // All OpenRGB files live in tools/openrgb/ — the exe and its DLLs
+    base.join("tools").join("openrgb").join("OpenRGB.exe")
 }
 
 async fn is_port_open(port: u16) -> bool {
@@ -95,14 +120,17 @@ async fn ensure_downloaded(dest: &Path) -> Result<(), String> {
         return Ok(());
     }
 
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Cannot create tools dir: {e}"))?;
-    }
+    // dest = …/tools/openrgb/OpenRGB.exe  →  extract_dir = …/tools/openrgb/
+    let extract_dir = dest
+        .parent()
+        .ok_or("Cannot determine extract directory")?;
+
+    std::fs::create_dir_all(extract_dir)
+        .map_err(|e| format!("Cannot create tools dir: {e}"))?;
 
     println!("[RGB] OpenRGB not found, fetching latest release...");
     let url = fetch_latest_windows_url().await?;
-    download_and_extract(&url, dest).await
+    download_and_extract(&url, extract_dir).await
 }
 
 async fn fetch_latest_windows_url() -> Result<String, String> {
@@ -112,33 +140,38 @@ async fn fetch_latest_windows_url() -> Result<String, String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    // OpenRGB GitLab project ID: 10582521
-    let releases: Vec<GitLabRelease> = client
-        .get("https://gitlab.com/api/v4/projects/10582521/releases")
+    // OpenRGB moved to Codeberg (Gitea-compatible API)
+    let releases: Vec<CodebergRelease> = client
+        .get("https://codeberg.org/api/v1/repos/OpenRGB/OpenRGB/releases?limit=10")
         .send()
         .await
-        .map_err(|e| format!("GitLab API request failed: {e}"))?
+        .map_err(|e| format!("Codeberg API request failed: {e}"))?
         .json()
         .await
-        .map_err(|e| format!("GitLab API parse failed: {e}"))?;
+        .map_err(|e| format!("Codeberg API parse failed: {e}"))?;
 
-    let latest = releases.first().ok_or("No OpenRGB releases found")?;
+    // Find first release (non-WinRing0) that has a Windows 64-bit ZIP asset
+    for release in &releases {
+        if release.name.to_lowercase().contains("winring0") {
+            continue;
+        }
+        if let Some(asset) = release.assets.iter().find(|a| {
+            let name = a.name.to_lowercase();
+            name.contains("windows") && name.contains("64") && name.ends_with(".zip")
+        }) {
+            println!("[RGB] Found: {} (from {})", asset.name, release.name);
+            return Ok(asset.browser_download_url.clone());
+        }
+    }
 
-    let link = latest
-        .assets
-        .links
-        .iter()
-        .find(|l| {
-            let name = l.name.to_lowercase();
-            name.contains("windows") && name.contains("64")
-        })
-        .ok_or("No Windows 64-bit download found in latest OpenRGB release")?;
-
-    println!("[RGB] Found release asset: {}", link.name);
-    Ok(link.url.clone())
+    Err("No Windows 64-bit ZIP found in any OpenRGB release".to_string())
 }
 
-async fn download_and_extract(url: &str, dest: &Path) -> Result<(), String> {
+/// Extract the full ZIP contents into `extract_dir`, stripping the top-level folder.
+/// OpenRGB zips look like:  OpenRGB_x.x_Windows_64_xxx/OpenRGB.exe
+///                          OpenRGB_x.x_Windows_64_xxx/Qt6Core.dll  …
+/// We drop that first path segment so everything lands flat in extract_dir.
+async fn download_and_extract(url: &str, extract_dir: &Path) -> Result<(), String> {
     println!("[RGB] Downloading OpenRGB from {url}");
 
     let client = reqwest::Client::builder()
@@ -156,24 +189,49 @@ async fn download_and_extract(url: &str, dest: &Path) -> Result<(), String> {
         .await
         .map_err(|e| format!("Download read failed: {e}"))?;
 
-    println!("[RGB] Downloaded {} bytes, extracting...", bytes.len());
+    println!("[RGB] Downloaded {} bytes, extracting all files...", bytes.len());
 
     let cursor = Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(cursor).map_err(|e| format!("ZIP open error: {e}"))?;
 
-    for i in 0..archive.len() {
-        let mut entry = archive
-            .by_index(i)
-            .map_err(|e| format!("ZIP entry error: {e}"))?;
+    let mut exe_found = false;
 
-        if entry.name().ends_with("OpenRGB.exe") {
-            let mut out =
-                std::fs::File::create(dest).map_err(|e| format!("Cannot create file: {e}"))?;
-            std::io::copy(&mut entry, &mut out).map_err(|e| format!("Extract error: {e}"))?;
-            println!("[RGB] OpenRGB.exe installed to {:?}", dest);
-            return Ok(());
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| format!("ZIP entry {i}: {e}"))?;
+
+        // Strip the leading folder component (e.g. "OpenRGB_1.0rc2_Windows_64_xxx/")
+        let raw_name = entry.name().to_string();
+        let relative = raw_name
+            .splitn(2, '/')
+            .nth(1)
+            .unwrap_or(&raw_name);
+
+        if relative.is_empty() || entry.is_dir() {
+            continue;
+        }
+
+        let out_path = extract_dir.join(relative);
+
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("mkdir {:?}: {e}", parent))?;
+        }
+
+        let mut out = std::fs::File::create(&out_path)
+            .map_err(|e| format!("Create {:?}: {e}", out_path))?;
+        std::io::copy(&mut entry, &mut out)
+            .map_err(|e| format!("Write {:?}: {e}", out_path))?;
+
+        if relative == "OpenRGB.exe" {
+            exe_found = true;
+            println!("[RGB] Extracted OpenRGB.exe → {:?}", out_path);
         }
     }
 
-    Err("OpenRGB.exe not found inside downloaded ZIP".to_string())
+    if exe_found {
+        println!("[RGB] OpenRGB installation complete in {:?}", extract_dir);
+        Ok(())
+    } else {
+        Err("OpenRGB.exe not found inside downloaded ZIP".to_string())
+    }
 }
