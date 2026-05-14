@@ -240,17 +240,25 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS apps (
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE,
-                path TEXT NOT NULL,
-                args TEXT
+                id              INTEGER PRIMARY KEY,
+                name            TEXT NOT NULL UNIQUE,
+                path            TEXT NOT NULL,
+                args            TEXT,
+                aliases         TEXT,
+                close_processes TEXT
             )",
-        )
+        )?;
+        // Migrations for existing DBs
+        let _ = conn.execute("ALTER TABLE apps ADD COLUMN aliases TEXT", []);
+        let _ = conn.execute("ALTER TABLE apps ADD COLUMN close_processes TEXT", []);
+        Ok(())
     }
 
     pub fn get_apps(&self) -> SqlResult<Vec<AppEntry>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT id, name, path, args FROM apps ORDER BY name")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, path, args, aliases, close_processes FROM apps ORDER BY name"
+        )?;
         let entries = stmt
             .query_map([], |row| {
                 Ok(AppEntry {
@@ -258,21 +266,33 @@ impl Database {
                     name: row.get(1)?,
                     path: row.get(2)?,
                     args: row.get(3)?,
+                    aliases: row.get(4)?,
+                    close_processes: row.get(5)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(entries)
     }
 
-    pub fn get_app_by_name(&self, name: &str) -> SqlResult<Option<AppEntry>> {
+    pub fn get_app_by_name(&self, input: &str) -> SqlResult<Option<AppEntry>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT id, name, path, args FROM apps WHERE LOWER(name) = LOWER(?1)")?;
-        let result = stmt.query_row(params![name], |row| {
+        let lower = input.to_lowercase();
+
+        // Match exact name first, then search inside comma-separated aliases
+        let mut stmt = conn.prepare(
+            "SELECT id, name, path, args, aliases, close_processes FROM apps
+             WHERE LOWER(name) = ?1
+                OR (',' || LOWER(COALESCE(aliases,'')) || ',') LIKE '%,' || ?1 || ',%'"
+        )?;
+
+        let result = stmt.query_row(params![lower], |row| {
             Ok(AppEntry {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 path: row.get(2)?,
                 args: row.get(3)?,
+                aliases: row.get(4)?,
+                close_processes: row.get(5)?,
             })
         }).ok();
         Ok(result)
@@ -300,4 +320,6 @@ pub struct AppEntry {
     pub name: String,
     pub path: String,
     pub args: Option<String>,
+    pub aliases: Option<String>,
+    pub close_processes: Option<String>,
 }

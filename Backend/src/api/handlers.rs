@@ -87,7 +87,7 @@ pub async fn close_handler(
 ) -> Result<Json<crate::actions::close::CloseResponse>, (StatusCode, Json<serde_json::Value>)> {
     match db.get_user_id_from_token(&token) {
         Ok(Some(user_id)) => {
-            let response = close_application(payload.0.clone());
+            let response = close_application(payload.0.clone(), &db);
             let _ = db.add_entry(
                 user_id,
                 "close",

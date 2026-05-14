@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use crate::core::database::Database;
 
 #[derive(Deserialize, Clone)]
 pub struct CloseRequest {
@@ -14,25 +15,28 @@ pub struct CloseResponse {
     pub error: Option<String>,
 }
 
-pub fn close_application(request: CloseRequest) -> CloseResponse {
+pub fn close_application(request: CloseRequest, db: &Database) -> CloseResponse {
     let input = request.command.trim().to_lowercase();
 
-    // Try alias-based multi-process kill first (e.g. Valorant needs several processes)
-    if let Some(processes) = get_process_aliases(&input) {
-        let mut any_killed = false;
-        for proc in &processes {
-            if process_exists(proc) {
-                kill_by_name(proc);
-                any_killed = true;
+    // Look up close_processes from DB (supports aliases too via get_app_by_name)
+    if let Ok(Some(app)) = db.get_app_by_name(&input) {
+        if let Some(procs) = &app.close_processes {
+            let processes: Vec<&str> = procs.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+            let mut any_killed = false;
+            for proc in &processes {
+                if process_exists(proc) {
+                    kill_by_name(proc);
+                    any_killed = true;
+                }
             }
-        }
-        if any_killed {
-            return CloseResponse {
-                success: true,
-                stdout: String::new(),
-                stderr: String::new(),
-                error: None,
-            };
+            if any_killed {
+                return CloseResponse {
+                    success: true,
+                    stdout: String::new(),
+                    stderr: String::new(),
+                    error: None,
+                };
+            }
         }
     }
 
@@ -118,40 +122,6 @@ fn process_exists(process_name: &str) -> bool {
     task_list.to_lowercase().contains(&process_name.to_lowercase())
 }
 
-/// Returns all process names to kill for well-known apps.
-/// Ordered: kill the launcher/client first to prevent restart.
-fn get_process_aliases(input: &str) -> Option<Vec<String>> {
-    let aliases: &[(&str, &[&str])] = &[
-        ("valorant", &["VALORANT-Win64-Shipping.exe", "RiotClientServices.exe", "RiotClientCrashHandler.exe"]),
-        ("riot", &["RiotClientServices.exe", "RiotClientCrashHandler.exe"]),
-        ("riotclient", &["RiotClientServices.exe", "RiotClientCrashHandler.exe"]),
-        ("league", &["League of Legends.exe", "LeagueClientUx.exe", "LeagueClient.exe", "RiotClientServices.exe"]),
-        ("leagueoflegends", &["League of Legends.exe", "LeagueClientUx.exe", "LeagueClient.exe"]),
-        ("notepad", &["notepad.exe"]),
-        ("calc", &["calc.exe", "Calculator.exe"]),
-        ("calculator", &["calc.exe", "Calculator.exe"]),
-        ("chrome", &["chrome.exe"]),
-        ("firefox", &["firefox.exe"]),
-        ("discord", &["Discord.exe"]),
-        ("spotify", &["Spotify.exe"]),
-        ("steam", &["steam.exe", "steamwebhelper.exe"]),
-        ("vlc", &["vlc.exe"]),
-        ("explorer", &["explorer.exe"]),
-        ("word", &["WINWORD.EXE"]),
-        ("excel", &["EXCEL.EXE"]),
-        ("powerpoint", &["POWERPNT.EXE"]),
-        ("teams", &["Teams.exe"]),
-        ("obs", &["obs64.exe", "obs32.exe"]),
-    ];
-
-    for (alias, processes) in aliases {
-        if input.contains(alias) {
-            return Some(processes.iter().map(|s| s.to_string()).collect());
-        }
-    }
-
-    None
-}
 
 /// Scan running processes for a partial name match.
 fn find_running_process(input: &str) -> Option<String> {

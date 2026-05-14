@@ -1,0 +1,178 @@
+﻿[
+    {
+        "name":  "Aimlabs",
+        "command":  "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Aim Lab\\AimLab_tb.exe"
+    },
+    {
+        "name":  "Apex Legends",
+        "command":  "E:\\SteamLibrary\\steamapps\\common\\Apex Legends\\ApexLauncher.exe"
+    },
+    {
+        "name":  "Assetto Corsa",
+        "command":  "C:\\Program Files (x86)\\Steam\\steamapps\\common\\assettocorsa\\acs.exe"
+    },
+    {
+        "name":  "Badlion Client",
+        "command":  "C:\\Users\\natpe\\AppData\\Local\\Programs\\Badlion Client\\Badlion Client.exe"
+    },
+    {
+        "name":  "Blender",
+        "command":  "C:\\Program Files\\Blender Foundation\\Blender 4.4\\blender-launcher.exe"
+    },
+    {
+        "name":  "Claude",
+        "command":  "C:\\Users\\natpe\\AppData\\Local\\AnthropicClaude\\claude.exe"
+    },
+    {
+        "name":  "Content Warning",
+        "command":  "D:\\SteamLibrary\\steamapps\\common\\Content Warning\\Content Warning.exe"
+    },
+    {
+        "name":  "CurseForge",
+        "command":  "C:\\Program Files (x86)\\Overwolf\\OverwolfLauncher.exe"
+    },
+    {
+        "name":  "Discord",
+        "command":  "C:\\Users\\natpe\\AppData\\Local\\Discord\\app-1.0.9237\\Discord.exe"
+    },
+    {
+        "name":  "Epic Games Launcher",
+        "command":  "C:\\Program Files (x86)\\Epic Games\\Launcher\\Portal\\Binaries\\Win32\\EpicGamesLauncher.exe"
+    },
+    {
+        "name":  "Escape Room - The Sick Colleague",
+        "command":  "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Escape Room - The Sick Colleague\\Escape Room.exe"
+    },
+    {
+        "name":  "Feather Launcher",
+        "command":  "C:\\Program Files\\Feather Launcher\\Feather Launcher.exe"
+    },
+    {
+        "name":  "FragPunk",
+        "command":  "E:\\SteamLibrary\\steamapps\\common\\FragPunk\\FragPunk.exe"
+    },
+    {
+        "name":  "Git",
+        "command":  "C:\\Program Files\\Git\\git-bash.exe"
+    },
+    {
+        "name":  "Grand Theft Auto V Version originale",
+        "command":  "E:\\SteamLibrary\\steamapps\\common\\Grand Theft Auto V\\GTA5.exe"
+    },
+    {
+        "name":  "IntelliJ IDEA Community Edition 2024.3.3",
+        "command":  "C:\\Program Files\\JetBrains\\IntelliJ IDEA Community Edition 2024.3.3\\bin\\idea64.exe"
+    },
+    {
+        "name":  "Logitech G HUB",
+        "command":  "C:\\Program Files\\LGHUB\\lghub.exe"
+    },
+    {
+        "name":  "Lunar Client",
+        "command":  "C:\\Users\\natpe\\AppData\\Local\\Programs\\Lunar Client\\Lunar Client.exe"
+    },
+    {
+        "name":  "Mem Reduct",
+        "command":  "C:\\Program Files\\Mem Reduct\\memreduct.exe"
+    },
+    {
+        "name":  "Microsoft Edge",
+        "command":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+    },
+    {
+        "name":  "Modrinth App",
+        "command":  "C:\\Users\\natpe\\AppData\\Local\\Modrinth App\\Modrinth App.exe"
+    },
+    {
+        "name":  "MSI Afterburner",
+        "command":  "C:\\Program Files (x86)\\MSI Afterburner\\MSIAfterburner.exe"
+    },
+    {
+        "name":  "Muck",
+        "command":  "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Muck\\Muck.exe"
+    },
+    {
+        "name":  "Mumble",
+        "command":  "C:\\Program Files\\Mumble\\client\\mumble.exe"
+    },
+    {
+        "name":  "OBS Studio",
+        "command":  "C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe"
+    },
+    {
+        "name":  "Ollama",
+        "command":  "C:\\Users\\natpe\\AppData\\Local\\Programs\\Ollama\\ollama app.exe"
+    },
+    {
+        "name":  "Opera GX Stable 131.0.5877.36",
+        "command":  "C:\\Users\\natpe\\AppData\\Local\\Programs\\Opera GX\\opera.exe"
+    },
+    {
+        "name":  "Oracle VirtualBox",
+        "command":  "C:\\Program Files\\Oracle\\VirtualBox\\VirtualBox.exe"
+    },
+    {
+        "name":  "Overwatch® 2",
+        "command":  "E:\\SteamLibrary\\steamapps\\common\\Overwatch\\Overwatch.exe"
+    },
+    {
+        "name":  "Paint.NET",
+        "command":  "C:\\Program Files\\Paint.NET\\paintdotnet.exe"
+    },
+    {
+        "name":  "PyCharm 2025.2.4",
+        "command":  "C:\\Program Files\\JetBrains\\PyCharm 2025.2.4\\bin\\pycharm64.exe"
+    },
+    {
+        "name":  "qBittorrent",
+        "command":  "C:\\Program Files\\qBittorrent\\qbittorrent.exe"
+    },
+    {
+        "name":  "R.E.P.O.",
+        "command":  "C:\\Program Files (x86)\\Steam\\steamapps\\common\\REPO\\REPO.exe"
+    },
+    {
+        "name":  "Raft",
+        "command":  "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Raft\\Raft.exe"
+    },
+    {
+        "name":  "Riot Client",
+        "command":  "C:\\Riot Games\\Riot Client\\RiotClientServices.exe"
+    },
+    {
+        "name":  "Roblox Player",
+        "command":  "C:\\Users\\natpe\\AppData\\Local\\Roblox\\Versions\\version-889d2588b25a43d1\\RobloxPlayerBeta.exe"
+    },
+    {
+        "name":  "Rockstar Games Launcher",
+        "command":  "C:\\Program Files\\Rockstar Games\\Launcher\\Launcher.exe"
+    },
+    {
+        "name":  "Run Prop, Run! - Puropu Pursuit",
+        "command":  "C:\\Program Files (x86)\\Steam\\steamapps\\common\\RunPropRun\\Run Prop Run.exe"
+    },
+    {
+        "name":  "Steam",
+        "command":  "C:\\Program Files (x86)\\Steam\\Steam.exe"
+    },
+    {
+        "name":  "The Forest",
+        "command":  "C:\\Program Files (x86)\\Steam\\steamapps\\common\\The Forest\\TheForest.exe"
+    },
+    {
+        "name":  "VALORANT",
+        "command":  "D:\\Valorant\\Riot Games\\VALORANT\\live\\VALORANT.exe"
+    },
+    {
+        "name":  "VLC media player",
+        "command":  "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
+    },
+    {
+        "name":  "Who\u0027s Your Daddy?!",
+        "command":  "D:\\SteamLibrary\\steamapps\\common\\Whos Your Daddy\\Classic\\WhosYourDaddy.exe"
+    },
+    {
+        "name":  "YuyuFrame",
+        "command":  "C:\\Program Files\\YuyuFrame\\YuyuFrame.exe"
+    }
+]
