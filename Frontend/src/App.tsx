@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import LoginPage from './LoginPage';
 import SetupWizard from './SetupWizard';
 import { apiFetch } from './api';
@@ -114,6 +114,15 @@ function App() {
   }, [token]);
 
   useEffect(() => { fetchApps(); }, [fetchApps]);
+
+  // Re-fetch everything when backend comes back online
+  const prevBackendHealthy = useRef(false);
+  useEffect(() => {
+    if (backendHealthy && !prevBackendHealthy.current && token) {
+      fetchApps();
+    }
+    prevBackendHealthy.current = backendHealthy;
+  }, [backendHealthy]);
 
   const addApp = async (name: string, path: string, args: string) => {
     if (!token) return;
