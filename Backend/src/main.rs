@@ -36,6 +36,9 @@ async fn main() {
         .route("/apps", get(api::handlers::get_apps_handler))
         .route("/apps/add", post(api::handlers::add_app_handler))
         .route("/apps/delete", post(api::handlers::delete_app_handler))
+        .route("/rgb/devices", get(api::handlers::rgb_devices_handler))
+        .route("/rgb/color", post(api::handlers::rgb_color_handler))
+        .route("/rgb/off", post(api::handlers::rgb_off_handler))
         .route("/ws", get(monitoring::ws::ws_handler))
         .layer(cors)
         .with_state(db);

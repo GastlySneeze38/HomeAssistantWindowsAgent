@@ -7,6 +7,7 @@ use crate::core::database::{Database, AppEntry};
 use crate::actions::launcher::{launch_application, LaunchRequest};
 use crate::core::auth::{LoginRequest, LoginResponse};
 use crate::core::middleware::BearerToken;
+use crate::actions::rgb;
 
 #[derive(Deserialize)]
 pub struct AppRequest {
@@ -253,6 +254,68 @@ pub async fn add_app_handler(
                 Json(json!({ "error": e.to_string() })),
             )),
         },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RgbColorRequest {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub device_id: Option<u32>,
+}
+
+#[derive(Deserialize)]
+pub struct RgbOffRequest {
+    pub device_id: Option<u32>,
+}
+
+pub async fn rgb_devices_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match rgb::get_devices().await {
+            Ok(devices) => Ok(Json(json!({ "devices": devices }))),
+            Err(e) => Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e })))),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn rgb_color_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<RgbColorRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => {
+            let res = rgb::set_color(payload.r, payload.g, payload.b, payload.device_id).await;
+            if res.success {
+                Ok(Json(json!({ "success": true })))
+            } else {
+                Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": res.error }))))
+            }
+        }
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn rgb_off_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<RgbOffRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => {
+            let res = rgb::turn_off(payload.device_id).await;
+            if res.success {
+                Ok(Json(json!({ "success": true })))
+            } else {
+                Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": res.error }))))
+            }
+        }
         _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
     }
 }
