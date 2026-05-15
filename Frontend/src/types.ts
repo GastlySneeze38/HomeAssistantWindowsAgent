@@ -71,6 +71,8 @@ export type AppEntry = {
   name: string;
   path: string;
   args: string | null;
+  aliases: string | null;
+  close_processes: string | null;
 };
 
 export type RgbDevice = {
