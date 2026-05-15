@@ -1,3 +1,5 @@
+-ajouter la consomation du pc si possible
+
 # HomeAssistant Windows Agent
 
 Agent Windows contrôlable à distance via une API locale. Permet à Home Assistant (ou n'importe quel client HTTP) de piloter un PC Windows : lancer des programmes, surveiller les ressources, automatiser des actions selon le jeu détecté.

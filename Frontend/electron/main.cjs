@@ -1,7 +1,20 @@
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
 
 const isDev = process.env.ELECTRON_START_URL !== undefined;
+
+let backendProcess = null;
+
+function startBackend() {
+  if (isDev) return; // En dev, le backend tourne séparément
+
+  const backendPath = path.join(process.resourcesPath, 'backend.exe');
+  backendProcess = spawn(backendPath, [], {
+    cwd: path.join(process.resourcesPath),
+    detached: false,
+  });
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -27,6 +40,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  startBackend();
   createWindow();
 
   app.on('activate', () => {
@@ -37,6 +51,9 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  if (backendProcess) {
+    backendProcess.kill();
+  }
   if (process.platform !== 'darwin') {
     app.quit();
   }

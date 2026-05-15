@@ -15,6 +15,7 @@ pub struct RgbResponse {
 }
 
 impl RgbResponse {
+    #[allow(dead_code)]
     pub fn ok() -> Self {
         RgbResponse { success: true, error: None }
     }

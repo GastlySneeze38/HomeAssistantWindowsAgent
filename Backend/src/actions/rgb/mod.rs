@@ -61,8 +61,6 @@ fn bridge_script() -> PathBuf {
 async fn run_bridge(args: &[&str]) -> Result<String, String> {
     let script = bridge_script();
 
-    eprintln!("[RGB] Appel bridge : python {:?} {:?}", script, args);
-
     let output = Command::new("python")
         .arg(&script)
         .args(args)
@@ -71,11 +69,6 @@ async fn run_bridge(args: &[&str]) -> Result<String, String> {
         .map_err(|e| format!("Impossible de lancer Python : {e}. Python est-il installé ?"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    if !stderr.is_empty() {
-        eprintln!("[RGB] Bridge stderr : {stderr}");
-    }
 
     if !output.status.success() {
         // Le script a retourné exit code != 0.
@@ -83,7 +76,6 @@ async fn run_bridge(args: &[&str]) -> Result<String, String> {
         return Err(stdout.trim().to_string());
     }
 
-    eprintln!("[RGB] Bridge stdout : {stdout}");
     Ok(stdout)
 }
 
