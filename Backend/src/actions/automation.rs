@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
-use sysinfo::{System, SystemExt, ProcessExt};
+use sysinfo::System;
 
 use crate::core::database::{Database, GameProfile};
 use crate::actions::rgb;
 use crate::actions::youtube_music::{play_playlist, PlayPlaylistRequest};
-use crate::actions::discord::join_voice_channel;
+use crate::actions::discord::{join_voice_channel, send_discord_message};
 
 /// Démarre la tâche de fond qui surveille les processus toutes les 3 secondes.
 /// Quand un processus correspondant à un profil activé apparaît, les actions du profil sont déclenchées.
@@ -18,11 +18,11 @@ pub fn start_automation_monitor(db: Arc<Database>) {
         loop {
             sleep(Duration::from_secs(3)).await;
 
-            sys.refresh_processes();
+            sys.refresh_all();
             let running: HashSet<String> = sys
                 .processes()
                 .values()
-                .map(|p| p.name().to_lowercase())
+                .map(|p| p.name().to_string().to_lowercase())
                 .collect();
 
             let profiles = match db.get_game_profiles() {
@@ -66,6 +66,16 @@ async fn trigger_profile_actions(profile: &GameProfile, db: &Arc<Database>) {
     if let Some(playlist_id) = &profile.youtube_playlist_id {
         if !playlist_id.is_empty() {
             play_playlist(PlayPlaylistRequest { playlist_id: playlist_id.clone() });
+        }
+    }
+
+    // Discord send message
+    if let (Some(channel_id), Some(message)) = (&profile.discord_message_channel_id, &profile.discord_message) {
+        if !channel_id.is_empty() && !message.is_empty() {
+            let bot_token = db.get_discord_config("bot_token").ok().flatten();
+            if let Some(bot_token) = bot_token {
+                send_discord_message(&bot_token, channel_id, message).await;
+            }
         }
     }
 

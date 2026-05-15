@@ -88,6 +88,8 @@ export type GameProfile = {
   rgb_color: string | null;
   discord_guild_id: string | null;
   discord_voice_channel_id: string | null;
+  discord_message_channel_id: string | null;
+  discord_message: string | null;
   youtube_playlist_id: string | null;
 };
 

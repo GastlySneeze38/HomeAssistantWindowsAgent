@@ -74,6 +74,8 @@ impl Database {
                 rgb_color TEXT,
                 discord_guild_id TEXT,
                 discord_voice_channel_id TEXT,
+                discord_message_channel_id TEXT,
+                discord_message TEXT,
                 youtube_playlist_id TEXT
             )",
         )?;
@@ -82,6 +84,9 @@ impl Database {
             "ALTER TABLE history ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0",
             [],
         );
+        // Migration: ajoute les colonnes Discord message si absentes
+        let _ = conn.execute("ALTER TABLE game_profiles ADD COLUMN discord_message_channel_id TEXT", []);
+        let _ = conn.execute("ALTER TABLE game_profiles ADD COLUMN discord_message TEXT", []);
 
         Ok(Database {
             conn: Mutex::new(conn),
@@ -456,7 +461,8 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, name, process_name, enabled, rgb_enabled, rgb_color,
-                    discord_guild_id, discord_voice_channel_id, youtube_playlist_id
+                    discord_guild_id, discord_voice_channel_id,
+                    discord_message_channel_id, discord_message, youtube_playlist_id
              FROM game_profiles ORDER BY name"
         )?;
         let rows = stmt.query_map([], |row| Ok(GameProfile {
@@ -468,7 +474,9 @@ impl Database {
             rgb_color: row.get(5)?,
             discord_guild_id: row.get(6)?,
             discord_voice_channel_id: row.get(7)?,
-            youtube_playlist_id: row.get(8)?,
+            discord_message_channel_id: row.get(8)?,
+            discord_message: row.get(9)?,
+            youtube_playlist_id: row.get(10)?,
         }))?.collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -478,13 +486,16 @@ impl Database {
         conn.execute(
             "INSERT INTO game_profiles
              (name, process_name, enabled, rgb_enabled, rgb_color,
-              discord_guild_id, discord_voice_channel_id, youtube_playlist_id)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+              discord_guild_id, discord_voice_channel_id,
+              discord_message_channel_id, discord_message, youtube_playlist_id)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
             params![
                 p.name, p.process_name,
                 p.enabled as i32, p.rgb_enabled as i32,
                 p.rgb_color, p.discord_guild_id,
-                p.discord_voice_channel_id, p.youtube_playlist_id
+                p.discord_voice_channel_id,
+                p.discord_message_channel_id, p.discord_message,
+                p.youtube_playlist_id
             ],
         )?;
         Ok(conn.last_insert_rowid())
@@ -495,13 +506,16 @@ impl Database {
         conn.execute(
             "UPDATE game_profiles SET
              name=?1, process_name=?2, enabled=?3, rgb_enabled=?4, rgb_color=?5,
-             discord_guild_id=?6, discord_voice_channel_id=?7, youtube_playlist_id=?8
-             WHERE id=?9",
+             discord_guild_id=?6, discord_voice_channel_id=?7,
+             discord_message_channel_id=?8, discord_message=?9, youtube_playlist_id=?10
+             WHERE id=?11",
             params![
                 p.name, p.process_name,
                 p.enabled as i32, p.rgb_enabled as i32,
                 p.rgb_color, p.discord_guild_id,
-                p.discord_voice_channel_id, p.youtube_playlist_id,
+                p.discord_voice_channel_id,
+                p.discord_message_channel_id, p.discord_message,
+                p.youtube_playlist_id,
                 p.id
             ],
         )?;
@@ -558,5 +572,7 @@ pub struct GameProfile {
     pub rgb_color: Option<String>,
     pub discord_guild_id: Option<String>,
     pub discord_voice_channel_id: Option<String>,
+    pub discord_message_channel_id: Option<String>,
+    pub discord_message: Option<String>,
     pub youtube_playlist_id: Option<String>,
 }
