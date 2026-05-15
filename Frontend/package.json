@@ -17,7 +17,7 @@
     "productName": "HomeAssistant Windows Agent",
     "win": {
       "target": "portable",
-      "icon": "electron/icon.ico"
+      "signAndEditExecutable": false
     },
     "files": [
       "dist/**/*",

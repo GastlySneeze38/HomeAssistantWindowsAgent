@@ -3,14 +3,15 @@
 //
 // Au lieu d'implémenter le protocole binaire OpenRGB SDK en Rust (fragile,
 // dépendant de la version), on délègue à l'API Python officielle `openrgb-python`
-// via un subprocess. Le script `rgb_bridge.py` retourne du JSON.
+// via un subprocess. `rgb_bridge.exe` est un binaire autonome compilé avec
+// PyInstaller — aucune installation Python requise sur la machine hôte.
 //
 // Avantages :
 //   - openrgb-python est maintenu et testé sur tous les devices
 //   - Pas de parsing binaire à la main
-//   - Mise à jour triviale si le protocole change (juste `pip upgrade`)
+//   - Aucune dépendance Python pour l'utilisateur final
 //
-// Prérequis : Python + `pip install openrgb-python` sur la machine hôte.
+// Prérequis : OpenRGB lancé avec le serveur SDK activé (port 6742).
 // ═══════════════════════════════════════════════════════════════════════════════
 
 pub mod protocol;
@@ -21,52 +22,39 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use tokio::process::Command;
 
-// ── Localisation du script Python ─────────────────────────────────────────────
+// ── Binaire embarqué ──────────────────────────────────────────────────────────
 
-/// Retourne le chemin absolu de `rgb_bridge.py`, placé à côté de l'exécutable.
-/// En développement (`cargo run`), l'exécutable est dans `target/debug/`,
-/// on remonte au dossier `Backend/` pour trouver le script.
-fn bridge_script() -> PathBuf {
-    // Chemin de l'exécutable courant
-    let exe = std::env::current_exe().unwrap_or_default();
+static BRIDGE_BYTES: &[u8] = include_bytes!("rgb_bridge.exe");
 
-    // En mode dev : .../target/debug/Backend.exe → on remonte 3 niveaux
-    // En mode prod : le script doit être à côté de l'exe
-    let candidates = [
-        // Production : script à côté de l'exe
-        exe.parent().map(|p| p.join("rgb_bridge.py")),
-        // Dev (cargo run) : exe dans target/debug/, script dans src/actions/rgb/
-        exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent())
-            .map(|p| p.join("src/actions/rgb/rgb_bridge.py")),
-        // Fallback absolu
-        Some(PathBuf::from(r"D:\projets\windows agent\Backend\src\actions\rgb\rgb_bridge.py")),
-    ];
+/// Extrait `rgb_bridge.exe` dans le dossier temp système si pas déjà présent,
+/// et retourne son chemin. L'extraction est ignorée si le fichier existe déjà
+/// avec la bonne taille (évite une écriture disque à chaque appel).
+fn bridge_exe() -> PathBuf {
+    let path = std::env::temp_dir().join("ha_rgb_bridge.exe");
 
-    for candidate in &candidates {
-        if let Some(path) = candidate {
-            if path.exists() {
-                return path.clone();
-            }
-        }
+    let needs_write = match std::fs::metadata(&path) {
+        Ok(meta) => meta.len() != BRIDGE_BYTES.len() as u64,
+        Err(_) => true,
+    };
+
+    if needs_write {
+        let _ = std::fs::write(&path, BRIDGE_BYTES);
     }
 
-    // Si rien trouvé, on retourne le dernier candidat (l'erreur sera claire)
-    PathBuf::from("rgb_bridge.py")
+    path
 }
 
-// ── Appel du script Python ────────────────────────────────────────────────────
+// ── Appel du binaire ──────────────────────────────────────────────────────────
 
-/// Appelle `python rgb_bridge.py <args...>` et retourne la sortie stdout.
-/// Les erreurs Python (exit code != 0) sont propagées comme Err(String).
+/// Appelle `rgb_bridge.exe <args...>` et retourne la sortie stdout.
 async fn run_bridge(args: &[&str]) -> Result<String, String> {
-    let script = bridge_script();
+    let bridge = bridge_exe();
 
-    let output = Command::new("python")
-        .arg(&script)
+    let output = Command::new(&bridge)
         .args(args)
         .output()
         .await
-        .map_err(|e| format!("Impossible de lancer Python : {e}. Python est-il installé ?"))?;
+        .map_err(|e| format!("Impossible de lancer rgb_bridge.exe : {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
 
