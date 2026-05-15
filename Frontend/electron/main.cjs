@@ -6,6 +6,13 @@ const http = require('http');
 const isDev = process.env.ELECTRON_START_URL !== undefined;
 
 let backendProcess = null;
+let splashWindow = null;
+
+function pushLog(message, isError = false) {
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+  const escaped = message.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+  splashWindow.webContents.executeJavaScript(`addLog(\`${escaped}\`, ${isError})`).catch(() => {});
+}
 
 function startBackend() {
   if (isDev) return;
@@ -14,6 +21,18 @@ function startBackend() {
   backendProcess = spawn(backendPath, [], {
     cwd: path.join(process.resourcesPath),
     detached: false,
+  });
+
+  backendProcess.stdout.on('data', (data) => {
+    data.toString().split('\n').filter(l => l.trim()).forEach(line => pushLog(line, false));
+  });
+
+  backendProcess.stderr.on('data', (data) => {
+    data.toString().split('\n').filter(l => l.trim()).forEach(line => pushLog(line, true));
+  });
+
+  backendProcess.on('exit', (code) => {
+    if (code !== 0) pushLog(`Backend exited with code ${code}`, true);
   });
 }
 
@@ -37,8 +56,8 @@ function waitForBackend(retries, resolve) {
 
 function createSplashWindow() {
   const splash = new BrowserWindow({
-    width: 400,
-    height: 300,
+    width: 600,
+    height: 400,
     frame: false,
     resizable: false,
     center: true,
@@ -61,29 +80,29 @@ function createSplashWindow() {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           display: flex;
           flex-direction: column;
-          align-items: center;
-          justify-content: center;
           height: 100vh;
-          gap: 24px;
           -webkit-app-region: drag;
         }
-        .logo {
-          font-size: 40px;
+        header {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 28px 24px 16px;
+          gap: 8px;
+          border-bottom: 1px solid #1e293b;
         }
-        h1 {
-          font-size: 18px;
-          font-weight: 600;
-          color: #f1f5f9;
-        }
-        .status {
-          font-size: 13px;
+        .logo { font-size: 32px; }
+        h1 { font-size: 16px; font-weight: 600; color: #f1f5f9; }
+        .status-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
           color: #94a3b8;
         }
         .dots span {
           display: inline-block;
-          width: 8px;
-          height: 8px;
-          margin: 0 3px;
+          width: 6px; height: 6px;
           background: #3b82f6;
           border-radius: 50%;
           animation: bounce 1.2s infinite ease-in-out;
@@ -94,13 +113,48 @@ function createSplashWindow() {
           0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
           40% { transform: scale(1); opacity: 1; }
         }
+        #log {
+          flex: 1;
+          overflow-y: auto;
+          padding: 12px 16px;
+          font-family: 'Consolas', 'Courier New', monospace;
+          font-size: 11px;
+          line-height: 1.6;
+          background: #020c1a;
+          -webkit-app-region: no-drag;
+        }
+        #log::-webkit-scrollbar { width: 4px; }
+        #log::-webkit-scrollbar-track { background: transparent; }
+        #log::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+        .log-line { color: #64748b; }
+        .log-line.normal { color: #94a3b8; }
+        .log-line.error { color: #f87171; }
+        .log-line::before {
+          content: '> ';
+          color: #334155;
+        }
       </style>
     </head>
     <body>
-      <div class="logo">🏠</div>
-      <h1>HomeAssistant Windows Agent</h1>
-      <p class="status">Démarrage du backend...</p>
-      <div class="dots"><span></span><span></span><span></span></div>
+      <header>
+        <div class="logo">🏠</div>
+        <h1>HomeAssistant Windows Agent</h1>
+        <div class="status-row">
+          <span>Démarrage du backend</span>
+          <div class="dots"><span></span><span></span><span></span></div>
+        </div>
+      </header>
+      <div id="log"><div class="log-line">En attente du backend...</div></div>
+      <script>
+        function addLog(message, isError) {
+          const log = document.getElementById('log');
+          const line = document.createElement('div');
+          line.className = 'log-line ' + (isError ? 'error' : 'normal');
+          line.textContent = message;
+          log.appendChild(line);
+          log.scrollTop = log.scrollHeight;
+        }
+      </script>
     </body>
     </html>
   `)}`);
@@ -127,42 +181,35 @@ function createMainWindow() {
   if (isDev) {
     win.loadURL(process.env.ELECTRON_START_URL);
   } else {
-    win.loadFile(path.join(__dirname, '../dist/index.html'));
+    const indexPath = path.join(__dirname, '../dist/index.html');
+    win.loadFile(indexPath).catch((err) => {
+      win.loadURL(`data:text/html,<pre style="color:red;font-family:monospace">Erreur chargement UI:<br>${encodeURIComponent(String(err))}<br><br>Chemin: ${encodeURIComponent(indexPath)}</pre>`);
+    });
   }
 
   return win;
 }
 
 app.whenReady().then(async () => {
+  splashWindow = createSplashWindow();
   startBackend();
 
-  const splash = createSplashWindow();
   const win = createMainWindow();
 
-  const ready = await new Promise((resolve) => waitForBackend(40, resolve));
+  const [ready, windowReady] = await Promise.all([
+    new Promise((resolve) => waitForBackend(40, resolve)),
+    new Promise((resolve) => win.once('ready-to-show', resolve)),
+  ]);
 
-  win.once('ready-to-show', () => {
-    splash.close();
-    win.show();
-  });
-
-  if (!ready) {
-    splash.close();
-    win.show();
-  }
+  splashWindow.close();
+  win.show();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
-    }
+    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  if (backendProcess) {
-    backendProcess.kill();
-  }
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (backendProcess) backendProcess.kill();
+  if (process.platform !== 'darwin') app.quit();
 });
