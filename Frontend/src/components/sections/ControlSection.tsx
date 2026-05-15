@@ -278,14 +278,23 @@ export default function ControlSection({
   };
 
   // ── YouTube Music ─────────────────────────────────────────────────────────
+  type YtPlaylist = { id: number; name: string; playlist_id: string };
+
   const [ytPlaylistInput, setYtPlaylistInput] = useState('');
   const [ytResult, setYtResult]               = useState<{ success: boolean; error?: string | null } | null>(null);
   const [ytLoading, setYtLoading]             = useState(false);
-  const [savedPlaylists, setSavedPlaylists]   = useState<{ name: string; id: string }[]>(() => {
-    try { return JSON.parse(localStorage.getItem('yt_playlists') ?? '[]'); } catch { return []; }
-  });
-  const [newPlName, setNewPlName] = useState('');
-  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [savedPlaylists, setSavedPlaylists]   = useState<YtPlaylist[]>([]);
+  const [newPlName, setNewPlName]             = useState('');
+  const [showSaveForm, setShowSaveForm]       = useState(false);
+
+  const fetchYtPlaylists = useCallback(async () => {
+    try {
+      const res = await api('/youtube/playlists');
+      setSavedPlaylists(await res.json());
+    } catch {}
+  }, [api]);
+
+  useEffect(() => { fetchYtPlaylists(); }, [fetchYtPlaylists]);
 
   function extractPlaylistId(input: string): string {
     const match = input.match(/[?&]list=([A-Za-z0-9_-]+)/);
@@ -306,19 +315,27 @@ export default function ControlSection({
     finally { setYtLoading(false); }
   };
 
-  const savePlaylist = () => {
+  const savePlaylist = async () => {
     if (!newPlName.trim() || !ytPlaylistInput.trim()) return;
-    const id = extractPlaylistId(ytPlaylistInput);
-    const updated = [...savedPlaylists, { name: newPlName.trim(), id }];
-    setSavedPlaylists(updated);
-    localStorage.setItem('yt_playlists', JSON.stringify(updated));
-    setNewPlName(''); setShowSaveForm(false);
+    const playlist_id = extractPlaylistId(ytPlaylistInput);
+    try {
+      await api('/youtube/playlists/add', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newPlName.trim(), playlist_id }),
+      });
+      await fetchYtPlaylists();
+      setNewPlName(''); setShowSaveForm(false);
+    } catch {}
   };
 
-  const removePlaylist = (id: string) => {
-    const updated = savedPlaylists.filter(p => p.id !== id);
-    setSavedPlaylists(updated);
-    localStorage.setItem('yt_playlists', JSON.stringify(updated));
+  const removePlaylist = async (playlist_id: string) => {
+    try {
+      await api('/youtube/playlists/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playlist_id }),
+      });
+      await fetchYtPlaylists();
+    } catch {}
   };
 
   // ── Tab button helper ─────────────────────────────────────────────────────
@@ -503,13 +520,13 @@ export default function ControlSection({
               {savedPlaylists.map(p => (
                 <div key={p.id} className="relative group/pl">
                   <button
-                    onClick={() => playPlaylist(p.id)}
+                    onClick={() => playPlaylist(p.playlist_id)}
                     className="flex items-center gap-2 rounded-xl border border-green-800 bg-green-950/30 px-3 py-2 pr-7 text-sm font-medium text-green-200 hover:bg-green-900/40 transition"
                   >
                     ▶ {p.name}
                   </button>
                   <button
-                    onClick={() => removePlaylist(p.id)}
+                    onClick={() => removePlaylist(p.playlist_id)}
                     className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 opacity-0 group-hover/pl:opacity-100 hover:text-red-400 transition"
                   >✕</button>
                 </div>

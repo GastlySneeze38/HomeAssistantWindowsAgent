@@ -14,7 +14,7 @@ pub struct YoutubeResponse {
 
 pub fn play_playlist(request: PlayPlaylistRequest) -> YoutubeResponse {
     let url = format!(
-        "https://music.youtube.com/playlist?list={}",
+        "https://music.youtube.com/watch?list={}",
         request.playlist_id
     );
 

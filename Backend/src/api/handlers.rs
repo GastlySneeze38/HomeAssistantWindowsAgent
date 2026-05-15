@@ -12,7 +12,7 @@ use crate::actions::discord::{
     send_discord_message, join_voice_channel, fetch_guild_roles, fetch_guild_members,
     SendMessageRequest, JoinVoiceRequest,
 };
-use crate::core::database::{Database, AppEntry, DiscordRole, DiscordMember};
+use crate::core::database::{Database, AppEntry, DiscordRole, DiscordMember, YoutubePlaylist};
 
 #[derive(Deserialize)]
 pub struct AppRequest {
@@ -617,7 +617,57 @@ pub async fn discord_fetch_members_handler(
     }
 }
 
-// --- YouTube Music handler ---
+// --- YouTube Music handlers ---
+
+#[derive(Deserialize)]
+pub struct YoutubePlaylistSaveRequest {
+    pub name: String,
+    pub playlist_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct YoutubePlaylistDeleteRequest {
+    pub playlist_id: String,
+}
+
+pub async fn youtube_get_playlists_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+) -> Result<Json<Vec<YoutubePlaylist>>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => Ok(Json(db.get_youtube_playlists().unwrap_or_default())),
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn youtube_add_playlist_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<YoutubePlaylistSaveRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.add_youtube_playlist(&payload.name, &payload.playlist_id) {
+            Ok(_) => Ok(Json(json!({ "success": true }))),
+            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn youtube_delete_playlist_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<YoutubePlaylistDeleteRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.delete_youtube_playlist(&payload.playlist_id) {
+            Ok(true) => Ok(Json(json!({ "success": true }))),
+            Ok(false) => Err((StatusCode::NOT_FOUND, Json(json!({ "error": "Playlist non trouvée" })))),
+            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
 
 pub async fn youtube_play_playlist_handler(
     State(db): State<Arc<Database>>,

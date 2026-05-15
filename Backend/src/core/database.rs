@@ -59,6 +59,11 @@ impl Database {
                 id INTEGER PRIMARY KEY,
                 user_id TEXT NOT NULL UNIQUE,
                 name TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS youtube_playlists (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                playlist_id TEXT NOT NULL UNIQUE
             )",
         )?;
         // Migration: ajoute user_id si absent (DB existante)
@@ -395,6 +400,35 @@ impl Database {
         Ok(())
     }
 
+    // --- YouTube playlists ---
+
+    pub fn get_youtube_playlists(&self) -> SqlResult<Vec<YoutubePlaylist>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, name, playlist_id FROM youtube_playlists ORDER BY name")?;
+        let rows = stmt.query_map([], |row| Ok(YoutubePlaylist {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            playlist_id: row.get(2)?,
+        }))?.collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn add_youtube_playlist(&self, name: &str, playlist_id: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO youtube_playlists (name, playlist_id) VALUES (?1, ?2)
+             ON CONFLICT(playlist_id) DO UPDATE SET name = excluded.name",
+            params![name, playlist_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_youtube_playlist(&self, playlist_id: &str) -> SqlResult<bool> {
+        let conn = self.conn.lock().unwrap();
+        let rows = conn.execute("DELETE FROM youtube_playlists WHERE playlist_id = ?1", params![playlist_id])?;
+        Ok(rows > 0)
+    }
+
     pub fn set_discord_config(&self, key: &str, value: &str) -> SqlResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -419,6 +453,13 @@ pub struct DiscordMember {
     pub id: i32,
     pub user_id: String,
     pub name: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct YoutubePlaylist {
+    pub id: i32,
+    pub name: String,
+    pub playlist_id: String,
 }
 
 #[derive(Serialize, Clone)]
