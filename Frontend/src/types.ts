@@ -79,4 +79,4 @@ export type RgbDevice = {
   led_count: number;
 };
 
-export type View = 'dashboard' | 'control' | 'history' | 'users' | 'apps' | 'rgb';
+export type View = 'dashboard' | 'control' | 'history' | 'users' | 'apps' | 'rgb' | 'discord';

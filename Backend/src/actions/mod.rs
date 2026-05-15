@@ -1,4 +1,5 @@
 pub mod close;
+pub mod discord;
 pub mod launcher;
 pub mod openrgb_manager;
 pub mod rgb;

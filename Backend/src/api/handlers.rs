@@ -8,6 +8,7 @@ use crate::actions::launcher::{launch_application, LaunchRequest};
 use crate::core::auth::{LoginRequest, LoginResponse};
 use crate::core::middleware::BearerToken;
 use crate::actions::rgb;
+use crate::actions::discord::{send_discord_message, join_voice_channel, SendMessageRequest, JoinVoiceRequest};
 
 #[derive(Deserialize)]
 pub struct AppRequest {
@@ -315,6 +316,135 @@ pub async fn rgb_off_handler(
             } else {
                 Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": res.error }))))
             }
+        }
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+// --- Discord handlers ---
+
+#[derive(Deserialize)]
+pub struct DiscordConfigRequest {
+    pub bot_token: Option<String>,
+    pub app_id: Option<String>,
+    pub client_secret: Option<String>,
+}
+
+pub async fn discord_get_config_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => {
+            let bot_configured = db.get_discord_config("bot_token").unwrap_or(None).is_some();
+            let app_id_configured = db.get_discord_config("app_id").unwrap_or(None).is_some();
+            let secret_configured = db.get_discord_config("client_secret").unwrap_or(None).is_some();
+            Ok(Json(json!({
+                "bot_configured": bot_configured,
+                "app_id_configured": app_id_configured,
+                "secret_configured": secret_configured
+            })))
+        }
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn discord_set_config_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<DiscordConfigRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => {
+            let keys: &[(&str, &Option<String>)] = &[
+                ("bot_token", &payload.bot_token),
+                ("app_id", &payload.app_id),
+                ("client_secret", &payload.client_secret),
+            ];
+            for (key, val) in keys {
+                if let Some(v) = val {
+                    if let Err(e) = db.set_discord_config(key, v) {
+                        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))));
+                    }
+                }
+            }
+            Ok(Json(json!({ "success": true })))
+        }
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn discord_send_message_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<SendMessageRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.get_user_id_from_token(&token) {
+        Ok(Some(user_id)) => {
+            let bot_token = match db.get_discord_config("bot_token").unwrap_or(None) {
+                Some(t) => t,
+                None => return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "Bot token non configuré" })),
+                )),
+            };
+            let result = send_discord_message(&bot_token, &payload.channel_id, &payload.message).await;
+            let _ = db.add_entry(
+                user_id,
+                "discord_message",
+                &format!("#{} → {}", payload.channel_id, payload.message),
+                result.success,
+                result.error.clone(),
+            );
+            Ok(Json(json!({ "success": result.success, "error": result.error })))
+        }
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn discord_join_voice_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<JoinVoiceRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.get_user_id_from_token(&token) {
+        Ok(Some(user_id)) => {
+            let app_id = match db.get_discord_config("app_id").unwrap_or(None) {
+                Some(id) => id,
+                None => return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": "Application ID non configuré" })))),
+            };
+            let client_secret = match db.get_discord_config("client_secret").unwrap_or(None) {
+                Some(s) => s,
+                None => return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": "Client Secret non configuré" })))),
+            };
+            let stored_access = db.get_discord_config("rpc_access_token").unwrap_or(None);
+            let stored_refresh = db.get_discord_config("rpc_refresh_token").unwrap_or(None);
+
+            let result = join_voice_channel(
+                &app_id,
+                &client_secret,
+                stored_access.as_deref(),
+                stored_refresh.as_deref(),
+                &payload.guild_id,
+                &payload.channel_id,
+            ).await;
+
+            // Persist any new tokens obtained during the flow
+            if let Some(ref at) = result.new_access_token {
+                let _ = db.set_discord_config("rpc_access_token", at);
+            }
+            if let Some(ref rt) = result.new_refresh_token {
+                let _ = db.set_discord_config("rpc_refresh_token", rt);
+            }
+
+            let _ = db.add_entry(
+                user_id,
+                "discord_voice",
+                &format!("guild:{} channel:{}", payload.guild_id, payload.channel_id),
+                result.success,
+                result.error.clone(),
+            );
+            Ok(Json(json!({ "success": result.success, "error": result.error })))
         }
         _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
     }

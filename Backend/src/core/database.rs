@@ -44,6 +44,10 @@ impl Database {
                 created_at TEXT NOT NULL,
                 expires_at TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+            CREATE TABLE IF NOT EXISTS discord_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             )",
         )?;
         // Migration: ajoute user_id si absent (DB existante)
@@ -311,6 +315,24 @@ impl Database {
         let conn = self.conn.lock().unwrap();
         let rows = conn.execute("DELETE FROM apps WHERE LOWER(name) = LOWER(?1)", params![name])?;
         Ok(rows > 0)
+    }
+
+    // --- Discord config ---
+
+    pub fn get_discord_config(&self, key: &str) -> SqlResult<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT value FROM discord_config WHERE key = ?1")?;
+        Ok(stmt.query_row(params![key], |row| row.get(0)).ok())
+    }
+
+    pub fn set_discord_config(&self, key: &str, value: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO discord_config (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
     }
 }
 

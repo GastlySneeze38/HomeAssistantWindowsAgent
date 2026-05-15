@@ -13,6 +13,7 @@ const NAV_ITEMS: { view: View; label: string }[] = [
   { view: 'control',   label: "Contrôle de l'appareil" },
   { view: 'apps',      label: 'Applications' },
   { view: 'rgb',       label: 'Contrôle RGB' },
+  { view: 'discord',   label: 'Contrôle Discord' },
   { view: 'history',   label: 'Historique des actions' },
   { view: 'users',     label: "Gestion utilisateurs" },
 ];
@@ -29,6 +30,8 @@ export default function Sidebar({
       activeView === view
         ? view === 'rgb'
           ? 'bg-purple-500 text-slate-950'
+          : view === 'discord'
+          ? 'bg-indigo-500 text-white'
           : 'bg-cyan-500 text-slate-950'
         : 'bg-slate-900 text-slate-200 hover:bg-slate-800'
     }`;

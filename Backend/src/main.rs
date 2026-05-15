@@ -43,6 +43,10 @@ async fn main() {
         .route("/rgb/devices", get(api::handlers::rgb_devices_handler))
         .route("/rgb/color", post(api::handlers::rgb_color_handler))
         .route("/rgb/off", post(api::handlers::rgb_off_handler))
+        .route("/discord/config", get(api::handlers::discord_get_config_handler))
+        .route("/discord/config", post(api::handlers::discord_set_config_handler))
+        .route("/discord/send_message", post(api::handlers::discord_send_message_handler))
+        .route("/discord/join_voice", post(api::handlers::discord_join_voice_handler))
         .route("/ws", get(monitoring::ws::ws_handler))
         .layer(cors)
         .with_state(db);
