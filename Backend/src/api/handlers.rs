@@ -3,12 +3,15 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use crate::actions::close::{close_application, CloseRequest};
-use crate::core::database::{Database, AppEntry};
 use crate::actions::launcher::{launch_application, LaunchRequest};
 use crate::core::auth::{LoginRequest, LoginResponse};
 use crate::core::middleware::BearerToken;
 use crate::actions::rgb;
-use crate::actions::discord::{send_discord_message, join_voice_channel, SendMessageRequest, JoinVoiceRequest};
+use crate::actions::discord::{
+    send_discord_message, join_voice_channel, fetch_guild_roles, fetch_guild_members,
+    SendMessageRequest, JoinVoiceRequest,
+};
+use crate::core::database::{Database, AppEntry, DiscordRole, DiscordMember};
 
 #[derive(Deserialize)]
 pub struct AppRequest {
@@ -445,6 +448,169 @@ pub async fn discord_join_voice_handler(
                 result.error.clone(),
             );
             Ok(Json(json!({ "success": result.success, "error": result.error })))
+        }
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+// ── Discord roles handlers ────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct DiscordRoleUpsertRequest {
+    pub guild_id: String,
+    pub role_id: String,
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct DiscordRoleDeleteRequest {
+    pub role_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct DiscordFetchRequest {
+    pub guild_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct DiscordMemberUpsertRequest {
+    pub user_id: String,
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct DiscordMemberDeleteRequest {
+    pub user_id: String,
+}
+
+pub async fn discord_get_roles_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+) -> Result<Json<Vec<DiscordRole>>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => Ok(Json(db.get_discord_roles().unwrap_or_default())),
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn discord_upsert_role_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<DiscordRoleUpsertRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.upsert_discord_role(&payload.guild_id, &payload.role_id, &payload.name) {
+            Ok(_) => Ok(Json(json!({ "success": true }))),
+            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn discord_delete_role_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<DiscordRoleDeleteRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.delete_discord_role(&payload.role_id) {
+            Ok(_) => Ok(Json(json!({ "success": true }))),
+            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn discord_fetch_roles_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<DiscordFetchRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => {
+            let bot_token = match db.get_discord_config("bot_token").unwrap_or(None) {
+                Some(t) => t,
+                None => return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": "Bot token non configuré" })))),
+            };
+            match fetch_guild_roles(&bot_token, &payload.guild_id).await {
+                Ok(roles) => {
+                    let mut count = 0;
+                    for r in &roles {
+                        if r.name != "@everyone" {
+                            let _ = db.upsert_discord_role(&payload.guild_id, &r.role_id, &r.name);
+                            count += 1;
+                        }
+                    }
+                    Ok(Json(json!({ "success": true, "imported": count })))
+                }
+                Err(e) => Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e })))),
+            }
+        }
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+// ── Discord members handlers ──────────────────────────────────────────────────
+
+pub async fn discord_get_members_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+) -> Result<Json<Vec<DiscordMember>>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => Ok(Json(db.get_discord_members().unwrap_or_default())),
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn discord_upsert_member_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<DiscordMemberUpsertRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.upsert_discord_member(&payload.user_id, &payload.name) {
+            Ok(_) => Ok(Json(json!({ "success": true }))),
+            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn discord_delete_member_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<DiscordMemberDeleteRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.delete_discord_member(&payload.user_id) {
+            Ok(_) => Ok(Json(json!({ "success": true }))),
+            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn discord_fetch_members_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<DiscordFetchRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => {
+            let bot_token = match db.get_discord_config("bot_token").unwrap_or(None) {
+                Some(t) => t,
+                None => return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": "Bot token non configuré" })))),
+            };
+            match fetch_guild_members(&bot_token, &payload.guild_id).await {
+                Ok(members) => {
+                    let count = members.len();
+                    for m in &members {
+                        let _ = db.upsert_discord_member(&m.user_id, &m.name);
+                    }
+                    Ok(Json(json!({ "success": true, "imported": count })))
+                }
+                Err(e) => Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e })))),
+            }
         }
         _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
     }

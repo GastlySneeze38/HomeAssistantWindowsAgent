@@ -48,6 +48,17 @@ impl Database {
             CREATE TABLE IF NOT EXISTS discord_config (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS discord_roles (
+                id INTEGER PRIMARY KEY,
+                guild_id TEXT NOT NULL,
+                role_id TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS discord_members (
+                id INTEGER PRIMARY KEY,
+                user_id TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL
             )",
         )?;
         // Migration: ajoute user_id si absent (DB existante)
@@ -325,6 +336,65 @@ impl Database {
         Ok(stmt.query_row(params![key], |row| row.get(0)).ok())
     }
 
+    // --- Discord roles ---
+
+    pub fn get_discord_roles(&self) -> SqlResult<Vec<DiscordRole>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, guild_id, role_id, name FROM discord_roles ORDER BY name")?;
+        let rows = stmt.query_map([], |row| Ok(DiscordRole {
+            id: row.get(0)?,
+            guild_id: row.get(1)?,
+            role_id: row.get(2)?,
+            name: row.get(3)?,
+        }))?.collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn upsert_discord_role(&self, guild_id: &str, role_id: &str, name: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO discord_roles (guild_id, role_id, name) VALUES (?1, ?2, ?3)
+             ON CONFLICT(role_id) DO UPDATE SET name = excluded.name, guild_id = excluded.guild_id",
+            params![guild_id, role_id, name],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_discord_role(&self, role_id: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM discord_roles WHERE role_id = ?1", params![role_id])?;
+        Ok(())
+    }
+
+    // --- Discord members ---
+
+    pub fn get_discord_members(&self) -> SqlResult<Vec<DiscordMember>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id, user_id, name FROM discord_members ORDER BY name")?;
+        let rows = stmt.query_map([], |row| Ok(DiscordMember {
+            id: row.get(0)?,
+            user_id: row.get(1)?,
+            name: row.get(2)?,
+        }))?.collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn upsert_discord_member(&self, user_id: &str, name: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO discord_members (user_id, name) VALUES (?1, ?2)
+             ON CONFLICT(user_id) DO UPDATE SET name = excluded.name",
+            params![user_id, name],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_discord_member(&self, user_id: &str) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM discord_members WHERE user_id = ?1", params![user_id])?;
+        Ok(())
+    }
+
     pub fn set_discord_config(&self, key: &str, value: &str) -> SqlResult<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -334,6 +404,21 @@ impl Database {
         )?;
         Ok(())
     }
+}
+
+#[derive(Serialize, Clone)]
+pub struct DiscordRole {
+    pub id: i32,
+    pub guild_id: String,
+    pub role_id: String,
+    pub name: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct DiscordMember {
+    pub id: i32,
+    pub user_id: String,
+    pub name: String,
 }
 
 #[derive(Serialize, Clone)]

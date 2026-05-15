@@ -64,6 +64,88 @@ pub async fn send_discord_message(
     }
 }
 
+// ── Fetch from Discord API ───────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct FetchedRole {
+    pub role_id: String,
+    pub name: String,
+}
+
+#[derive(Serialize)]
+pub struct FetchedMember {
+    pub user_id: String,
+    pub name: String,
+}
+
+pub async fn fetch_guild_roles(bot_token: &str, guild_id: &str) -> Result<Vec<FetchedRole>, String> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("https://discord.com/api/v10/guilds/{}/roles", guild_id))
+        .header("Authorization", format!("Bot {}", bot_token))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("HTTP error: {}", body));
+    }
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let roles = json.as_array().ok_or("Réponse invalide")?
+        .iter()
+        .filter_map(|r| {
+            Some(FetchedRole {
+                role_id: r["id"].as_str()?.to_string(),
+                name: r["name"].as_str()?.to_string(),
+            })
+        })
+        .collect();
+    Ok(roles)
+}
+
+pub async fn fetch_guild_members(bot_token: &str, guild_id: &str) -> Result<Vec<FetchedMember>, String> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("https://discord.com/api/v10/guilds/{}/members?limit=1000", guild_id))
+        .header("Authorization", format!("Bot {}", bot_token))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        let err = if body.contains("50001") || body.contains("Missing Access") {
+            "Accès refusé (code 50001). Active l'intent « Server Members Intent » dans le Developer Portal → ton bot → Privileged Gateway Intents.".to_string()
+        } else {
+            format!("Erreur Discord : {}", body)
+        };
+        return Err(err);
+    }
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let members = json.as_array().ok_or("Réponse invalide")?
+        .iter()
+        .filter_map(|m| {
+            let user = m["user"].as_object()?;
+            // Skip bots
+            if user.get("bot").and_then(|b| b.as_bool()).unwrap_or(false) {
+                return None;
+            }
+            let user_id = user["id"].as_str()?.to_string();
+            // Prefer server nickname, fallback to global_name, then username
+            let name = m["nick"].as_str()
+                .or_else(|| user["global_name"].as_str())
+                .or_else(|| user["username"].as_str())
+                .unwrap_or("inconnu")
+                .to_string();
+            Some(FetchedMember { user_id, name })
+        })
+        .collect();
+    Ok(members)
+}
+
 // ── RPC helpers ──────────────────────────────────────────────────────────────
 
 fn rpc_write(pipe: &mut impl Write, opcode: u32, payload: &str) -> std::io::Result<()> {
