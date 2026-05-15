@@ -7,7 +7,7 @@ Commande pour actualiser l'api en temp réel : cargo watch -x run -w src
 lancer les deux avec run-dev.bat
 
 corriger le rgb avec l'erreur : 
-ça me dit que ça marche alors que rien ne se passe sur mon pc mais ça faisait la meme chose avec openrgb de base
+alors je vait te dire directement les décalage : rouge, orange ; bleu, rose ; orange, jaune ; rose, orange clair
 
 Automatisation :
 -RGB -> OpenRGB pour MSI ( on le télécharge, lance et ferme avec l'app )
