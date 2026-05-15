@@ -211,5 +211,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (backendProcess) backendProcess.kill();
+  // OpenRGB ne reçoit pas le signal d'arrêt quand le backend est tué brutalement
+  spawn('taskkill', ['/F', '/IM', 'OpenRGB.exe'], { detached: true, stdio: 'ignore' });
   if (process.platform !== 'darwin') app.quit();
 });
