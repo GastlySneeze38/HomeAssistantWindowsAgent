@@ -284,8 +284,9 @@ export default function ControlSection({
   const [ytResult, setYtResult]               = useState<{ success: boolean; error?: string | null } | null>(null);
   const [ytLoading, setYtLoading]             = useState(false);
   const [savedPlaylists, setSavedPlaylists]   = useState<YtPlaylist[]>([]);
-  const [newPlName, setNewPlName]             = useState('');
-  const [showSaveForm, setShowSaveForm]       = useState(false);
+  const [newPlName, setNewPlName] = useState('');
+  const [ytAddInput, setYtAddInput] = useState('');
+  const [ytAddOpen, setYtAddOpen]   = useState(false);
 
   const fetchYtPlaylists = useCallback(async () => {
     try {
@@ -316,15 +317,15 @@ export default function ControlSection({
   };
 
   const savePlaylist = async () => {
-    if (!newPlName.trim() || !ytPlaylistInput.trim()) return;
-    const playlist_id = extractPlaylistId(ytPlaylistInput);
+    if (!newPlName.trim() || !ytAddInput.trim()) return;
+    const playlist_id = extractPlaylistId(ytAddInput);
     try {
       await api('/youtube/playlists/add', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newPlName.trim(), playlist_id }),
       });
       await fetchYtPlaylists();
-      setNewPlName(''); setShowSaveForm(false);
+      setNewPlName(''); setYtAddInput('');
     } catch {}
   };
 
@@ -535,13 +536,13 @@ export default function ControlSection({
           </div>
         )}
 
-        {/* Input */}
+        {/* Lancer une URL directement */}
         <div className="flex gap-3">
           <input
             value={ytPlaylistInput}
             onChange={e => setYtPlaylistInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && playPlaylist(ytPlaylistInput)}
-            placeholder="ID ou URL de playlist YouTube Music…"
+            placeholder="Lancer directement un ID ou une URL…"
             className="flex-1 rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-slate-100 outline-none focus:border-green-400 transition text-sm font-mono"
           />
           <button
@@ -553,35 +554,42 @@ export default function ControlSection({
           </button>
         </div>
 
-        {/* Save form */}
-        {ytPlaylistInput.trim() && !showSaveForm && (
+        {/* Ajouter une playlist (pliable) */}
+        <div className="rounded-2xl border border-slate-700 overflow-hidden">
           <button
-            onClick={() => setShowSaveForm(true)}
-            className="text-xs text-slate-400 hover:text-green-300 transition"
+            onClick={() => setYtAddOpen(v => !v)}
+            className="w-full flex items-center gap-2 px-4 py-3 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800/40 transition"
           >
-            + Sauvegarder cette playlist
+            <span className={`text-xs transition-transform duration-200 ${ytAddOpen ? 'rotate-90' : ''}`}>▶</span>
+            + Ajouter une playlist
           </button>
-        )}
-        {showSaveForm && (
-          <div className="flex gap-2 items-center">
-            <input
-              value={newPlName}
-              onChange={e => setNewPlName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && savePlaylist()}
-              placeholder="Nom de la playlist…"
-              className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-green-400 transition"
-              autoFocus
-            />
-            <button onClick={savePlaylist} disabled={!newPlName.trim()}
-              className="rounded-xl bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-40 transition">
-              Sauvegarder
-            </button>
-            <button onClick={() => { setShowSaveForm(false); setNewPlName(''); }}
-              className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-400 hover:text-slate-200 transition">
-              Annuler
-            </button>
-          </div>
-        )}
+          {ytAddOpen && (
+            <div className="px-4 pb-4 pt-2 border-t border-white/5 space-y-3">
+              <input
+                value={newPlName}
+                onChange={e => setNewPlName(e.target.value)}
+                placeholder="Nom affiché (ex: Lo-fi, Gaming…)"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-green-400 transition"
+              />
+              <div className="flex gap-2">
+                <input
+                  value={ytAddInput}
+                  onChange={e => setYtAddInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && savePlaylist()}
+                  placeholder="ID ou URL de la playlist…"
+                  className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-green-400 transition font-mono"
+                />
+                <button
+                  onClick={savePlaylist}
+                  disabled={!newPlName.trim() || !ytAddInput.trim()}
+                  className="rounded-xl bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-40 transition"
+                >
+                  Ajouter
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {ytResult && (
           <div className={`rounded-2xl border p-3 text-sm ${ytResult.success ? 'border-green-700 bg-green-950/40 text-green-300' : 'border-red-700 bg-red-950/40 text-red-300'}`}>
