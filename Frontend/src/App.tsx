@@ -9,7 +9,6 @@ import HistorySection from './components/sections/HistorySection';
 import UsersSection from './components/sections/UsersSection';
 import DashboardSection from './components/sections/DashboardSection';
 import AppsSection from './components/sections/AppsSection';
-import RgbSection from './components/sections/RgbSection';
 import DiscordSection from './components/sections/DiscordSection';
 import {
   AppEntry,
@@ -283,9 +282,11 @@ function App() {
 
             {activeView === 'dashboard' && <DashboardSection data={dashboard} />}
 
-            {activeView === 'control' && (
+            {activeView === 'control' && token && (
               <ControlSection
                 isOnline={isOnline}
+                token={token}
+                onUnauthorized={handleLogout}
                 apps={apps}
                 command={command}
                 setCommand={setCommand}
@@ -308,9 +309,6 @@ function App() {
               />
             )}
 
-            {activeView === 'rgb' && token && (
-              <RgbSection token={token} onUnauthorized={handleLogout} />
-            )}
 
             {activeView === 'discord' && token && (
               <DiscordSection token={token} onUnauthorized={handleLogout} />

@@ -47,7 +47,11 @@ function actionMeta(type: string) {
 export default function HistorySection({ history }: HistorySectionProps) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'launch' | 'close' | 'success' | 'fail'>('all');
-  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
+  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(() => {
+    const keys = new Set<string>();
+    for (const e of history) keys.add(dayKey(e.timestamp));
+    return keys;
+  });
 
   const filtered = useMemo(() => {
     return history.filter((e) => {
