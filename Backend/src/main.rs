@@ -21,6 +21,9 @@ async fn main() {
     let openrgb = Arc::new(OpenRgbManager::new());
     openrgb.start().await;
 
+    // Start game automation monitor
+    actions::automation::start_automation_monitor(Arc::clone(&db));
+
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -59,6 +62,10 @@ async fn main() {
         .route("/youtube/playlists/add", post(api::handlers::youtube_add_playlist_handler))
         .route("/youtube/playlists/delete", post(api::handlers::youtube_delete_playlist_handler))
         .route("/youtube/play", post(api::handlers::youtube_play_playlist_handler))
+        .route("/automation/profiles", get(api::handlers::get_game_profiles_handler))
+        .route("/automation/profiles/add", post(api::handlers::add_game_profile_handler))
+        .route("/automation/profiles/update", post(api::handlers::update_game_profile_handler))
+        .route("/automation/profiles/delete", post(api::handlers::delete_game_profile_handler))
         .route("/ws", get(monitoring::ws::ws_handler))
         .layer(cors)
         .with_state(db);

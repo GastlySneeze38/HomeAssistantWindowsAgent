@@ -64,6 +64,17 @@ impl Database {
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 playlist_id TEXT NOT NULL UNIQUE
+            );
+            CREATE TABLE IF NOT EXISTS game_profiles (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                process_name TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                rgb_enabled INTEGER NOT NULL DEFAULT 0,
+                rgb_color TEXT,
+                discord_guild_id TEXT,
+                discord_voice_channel_id TEXT,
+                youtube_playlist_id TEXT
             )",
         )?;
         // Migration: ajoute user_id si absent (DB existante)
@@ -438,6 +449,70 @@ impl Database {
         )?;
         Ok(())
     }
+
+    // --- Game profiles (automation) ---
+
+    pub fn get_game_profiles(&self) -> SqlResult<Vec<GameProfile>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, name, process_name, enabled, rgb_enabled, rgb_color,
+                    discord_guild_id, discord_voice_channel_id, youtube_playlist_id
+             FROM game_profiles ORDER BY name"
+        )?;
+        let rows = stmt.query_map([], |row| Ok(GameProfile {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            process_name: row.get(2)?,
+            enabled: row.get::<_, i32>(3)? != 0,
+            rgb_enabled: row.get::<_, i32>(4)? != 0,
+            rgb_color: row.get(5)?,
+            discord_guild_id: row.get(6)?,
+            discord_voice_channel_id: row.get(7)?,
+            youtube_playlist_id: row.get(8)?,
+        }))?.collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub fn add_game_profile(&self, p: &GameProfile) -> SqlResult<i64> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO game_profiles
+             (name, process_name, enabled, rgb_enabled, rgb_color,
+              discord_guild_id, discord_voice_channel_id, youtube_playlist_id)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+            params![
+                p.name, p.process_name,
+                p.enabled as i32, p.rgb_enabled as i32,
+                p.rgb_color, p.discord_guild_id,
+                p.discord_voice_channel_id, p.youtube_playlist_id
+            ],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn update_game_profile(&self, p: &GameProfile) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE game_profiles SET
+             name=?1, process_name=?2, enabled=?3, rgb_enabled=?4, rgb_color=?5,
+             discord_guild_id=?6, discord_voice_channel_id=?7, youtube_playlist_id=?8
+             WHERE id=?9",
+            params![
+                p.name, p.process_name,
+                p.enabled as i32, p.rgb_enabled as i32,
+                p.rgb_color, p.discord_guild_id,
+                p.discord_voice_channel_id, p.youtube_playlist_id,
+                p.id
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_game_profile(&self, id: i32) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM game_profiles WHERE id=?1", params![id])?;
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -462,6 +537,7 @@ pub struct YoutubePlaylist {
     pub playlist_id: String,
 }
 
+
 #[derive(Serialize, Clone)]
 pub struct AppEntry {
     pub id: i32,
@@ -470,4 +546,17 @@ pub struct AppEntry {
     pub args: Option<String>,
     pub aliases: Option<String>,
     pub close_processes: Option<String>,
+}
+
+#[derive(Serialize, Clone, serde::Deserialize)]
+pub struct GameProfile {
+    pub id: i32,
+    pub name: String,
+    pub process_name: String,
+    pub enabled: bool,
+    pub rgb_enabled: bool,
+    pub rgb_color: Option<String>,
+    pub discord_guild_id: Option<String>,
+    pub discord_voice_channel_id: Option<String>,
+    pub youtube_playlist_id: Option<String>,
 }

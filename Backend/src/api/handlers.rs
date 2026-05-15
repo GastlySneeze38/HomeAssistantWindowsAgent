@@ -12,7 +12,7 @@ use crate::actions::discord::{
     send_discord_message, join_voice_channel, fetch_guild_roles, fetch_guild_members,
     SendMessageRequest, JoinVoiceRequest,
 };
-use crate::core::database::{Database, AppEntry, DiscordRole, DiscordMember, YoutubePlaylist};
+use crate::core::database::{Database, AppEntry, DiscordRole, DiscordMember, YoutubePlaylist, GameProfile};
 
 #[derive(Deserialize)]
 pub struct AppRequest {
@@ -686,6 +686,65 @@ pub async fn youtube_play_playlist_handler(
             );
             Ok(Json(json!({ "success": response.success, "error": response.error })))
         }
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+// ── Automation / Game profiles ────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct GameProfileDeleteRequest {
+    pub id: i32,
+}
+
+pub async fn get_game_profiles_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+) -> Result<Json<Vec<GameProfile>>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => Ok(Json(db.get_game_profiles().unwrap_or_default())),
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn add_game_profile_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<GameProfile>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.add_game_profile(&payload) {
+            Ok(id) => Ok(Json(json!({ "success": true, "id": id }))),
+            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn update_game_profile_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<GameProfile>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.update_game_profile(&payload) {
+            Ok(_) => Ok(Json(json!({ "success": true }))),
+            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))),
+        },
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+pub async fn delete_game_profile_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<GameProfileDeleteRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.verify_token(&token) {
+        Ok(true) => match db.delete_game_profile(payload.id) {
+            Ok(_) => Ok(Json(json!({ "success": true }))),
+            Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() })))),
+        },
         _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
     }
 }

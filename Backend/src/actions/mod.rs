@@ -1,3 +1,4 @@
+pub mod automation;
 pub mod close;
 pub mod discord;
 pub mod launcher;

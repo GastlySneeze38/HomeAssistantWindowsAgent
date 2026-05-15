@@ -9,12 +9,13 @@ type SidebarProps = {
 };
 
 const NAV_ITEMS: { view: View; label: string }[] = [
-  { view: 'dashboard', label: 'Dashboard système' },
-  { view: 'control',   label: "Contrôle de l'appareil" },
-  { view: 'apps',      label: 'Applications' },
-  { view: 'discord',   label: 'Configuration Discord' },
-  { view: 'history',   label: 'Historique des actions' },
-  { view: 'users',     label: "Gestion utilisateurs" },
+  { view: 'dashboard',   label: 'Dashboard système' },
+  { view: 'control',     label: "Contrôle de l'appareil" },
+  { view: 'apps',        label: 'Applications' },
+  { view: 'automation',  label: 'Automatisation' },
+  { view: 'discord',     label: 'Configuration Discord' },
+  { view: 'history',     label: 'Historique des actions' },
+  { view: 'users',       label: "Gestion utilisateurs" },
 ];
 
 export default function Sidebar({
@@ -29,6 +30,8 @@ export default function Sidebar({
       activeView === view
         ? view === 'discord'
           ? 'bg-indigo-500 text-white'
+          : view === 'automation'
+          ? 'bg-orange-500 text-slate-950'
           : 'bg-cyan-500 text-slate-950'
         : 'bg-slate-900 text-slate-200 hover:bg-slate-800'
     }`;

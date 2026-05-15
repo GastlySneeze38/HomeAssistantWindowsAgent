@@ -10,6 +10,7 @@ import UsersSection from './components/sections/UsersSection';
 import DashboardSection from './components/sections/DashboardSection';
 import AppsSection from './components/sections/AppsSection';
 import DiscordSection from './components/sections/DiscordSection';
+import AutomationSection from './components/sections/AutomationSection';
 import {
   AppEntry,
   CloseResponse,
@@ -309,6 +310,10 @@ function App() {
               />
             )}
 
+
+            {activeView === 'automation' && token && (
+              <AutomationSection token={token} onUnauthorized={handleLogout} />
+            )}
 
             {activeView === 'discord' && token && (
               <DiscordSection token={token} onUnauthorized={handleLogout} />

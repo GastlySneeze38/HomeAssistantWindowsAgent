@@ -79,4 +79,16 @@ export type RgbDevice = {
   led_count: number;
 };
 
-export type View = 'dashboard' | 'control' | 'history' | 'users' | 'apps' | 'discord';
+export type GameProfile = {
+  id: number;
+  name: string;
+  process_name: string;
+  enabled: boolean;
+  rgb_enabled: boolean;
+  rgb_color: string | null;
+  discord_guild_id: string | null;
+  discord_voice_channel_id: string | null;
+  youtube_playlist_id: string | null;
+};
+
+export type View = 'dashboard' | 'control' | 'history' | 'users' | 'apps' | 'discord' | 'automation';
