@@ -55,6 +55,7 @@ async fn main() {
         .route("/discord/members/add", post(api::handlers::discord_upsert_member_handler))
         .route("/discord/members/delete", post(api::handlers::discord_delete_member_handler))
         .route("/discord/members/fetch", post(api::handlers::discord_fetch_members_handler))
+        .route("/youtube/play", post(api::handlers::youtube_play_playlist_handler))
         .route("/ws", get(monitoring::ws::ws_handler))
         .layer(cors)
         .with_state(db);

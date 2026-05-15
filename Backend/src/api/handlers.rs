@@ -4,6 +4,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use crate::actions::close::{close_application, CloseRequest};
 use crate::actions::launcher::{launch_application, LaunchRequest};
+use crate::actions::youtube_music::{play_playlist, PlayPlaylistRequest};
 use crate::core::auth::{LoginRequest, LoginResponse};
 use crate::core::middleware::BearerToken;
 use crate::actions::rgb;
@@ -611,6 +612,29 @@ pub async fn discord_fetch_members_handler(
                 }
                 Err(e) => Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e })))),
             }
+        }
+        _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
+    }
+}
+
+// --- YouTube Music handler ---
+
+pub async fn youtube_play_playlist_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+    Json(payload): Json<PlayPlaylistRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    match db.get_user_id_from_token(&token) {
+        Ok(Some(user_id)) => {
+            let response = play_playlist(payload.clone());
+            let _ = db.add_entry(
+                user_id,
+                "youtube_playlist",
+                &format!("playlist:{}", payload.playlist_id),
+                response.success,
+                response.error.clone(),
+            );
+            Ok(Json(json!({ "success": response.success, "error": response.error })))
         }
         _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
     }

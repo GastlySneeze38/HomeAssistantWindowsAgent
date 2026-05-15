@@ -277,6 +277,50 @@ export default function ControlSection({
     finally { setJoiningVoice(false); }
   };
 
+  // ── YouTube Music ─────────────────────────────────────────────────────────
+  const [ytPlaylistInput, setYtPlaylistInput] = useState('');
+  const [ytResult, setYtResult]               = useState<{ success: boolean; error?: string | null } | null>(null);
+  const [ytLoading, setYtLoading]             = useState(false);
+  const [savedPlaylists, setSavedPlaylists]   = useState<{ name: string; id: string }[]>(() => {
+    try { return JSON.parse(localStorage.getItem('yt_playlists') ?? '[]'); } catch { return []; }
+  });
+  const [newPlName, setNewPlName] = useState('');
+  const [showSaveForm, setShowSaveForm] = useState(false);
+
+  function extractPlaylistId(input: string): string {
+    const match = input.match(/[?&]list=([A-Za-z0-9_-]+)/);
+    return match ? match[1] : input.trim();
+  }
+
+  const playPlaylist = async (idOrUrl: string) => {
+    const playlist_id = extractPlaylistId(idOrUrl);
+    if (!playlist_id) return;
+    setYtLoading(true); setYtResult(null);
+    try {
+      const res = await api('/youtube/play', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playlist_id }),
+      });
+      setYtResult(await res.json());
+    } catch (e) { setYtResult({ success: false, error: String(e) }); }
+    finally { setYtLoading(false); }
+  };
+
+  const savePlaylist = () => {
+    if (!newPlName.trim() || !ytPlaylistInput.trim()) return;
+    const id = extractPlaylistId(ytPlaylistInput);
+    const updated = [...savedPlaylists, { name: newPlName.trim(), id }];
+    setSavedPlaylists(updated);
+    localStorage.setItem('yt_playlists', JSON.stringify(updated));
+    setNewPlName(''); setShowSaveForm(false);
+  };
+
+  const removePlaylist = (id: string) => {
+    const updated = savedPlaylists.filter(p => p.id !== id);
+    setSavedPlaylists(updated);
+    localStorage.setItem('yt_playlists', JSON.stringify(updated));
+  };
+
   // ── Tab button helper ─────────────────────────────────────────────────────
   function TabBtn({ active, onClick, children, accent }: {
     active: boolean; onClick: () => void; children: React.ReactNode; accent: string;
@@ -447,6 +491,86 @@ export default function ControlSection({
 
         {rgbStatus && <p className="text-sm text-green-400">{rgbStatus}</p>}
         {rgbError  && <p className="text-sm text-red-400">{rgbError}</p>}
+      </CollapsibleCard>
+
+      {/* ── YouTube Music ─────────────────────────────────────────────────────── */}
+      <CollapsibleCard title="🎵 YouTube Music" accent="green" defaultOpen={false}>
+        {/* Saved playlists */}
+        {savedPlaylists.length > 0 && (
+          <div>
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-2">Playlists sauvegardées</p>
+            <div className="flex flex-wrap gap-2">
+              {savedPlaylists.map(p => (
+                <div key={p.id} className="relative group/pl">
+                  <button
+                    onClick={() => playPlaylist(p.id)}
+                    className="flex items-center gap-2 rounded-xl border border-green-800 bg-green-950/30 px-3 py-2 pr-7 text-sm font-medium text-green-200 hover:bg-green-900/40 transition"
+                  >
+                    ▶ {p.name}
+                  </button>
+                  <button
+                    onClick={() => removePlaylist(p.id)}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-slate-500 opacity-0 group-hover/pl:opacity-100 hover:text-red-400 transition"
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Input */}
+        <div className="flex gap-3">
+          <input
+            value={ytPlaylistInput}
+            onChange={e => setYtPlaylistInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && playPlaylist(ytPlaylistInput)}
+            placeholder="ID ou URL de playlist YouTube Music…"
+            className="flex-1 rounded-2xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-slate-100 outline-none focus:border-green-400 transition text-sm font-mono"
+          />
+          <button
+            onClick={() => playPlaylist(ytPlaylistInput)}
+            disabled={!isOnline || !ytPlaylistInput.trim() || ytLoading}
+            className="rounded-2xl bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-500 disabled:opacity-40 transition"
+          >
+            {ytLoading ? '…' : '▶ Lancer'}
+          </button>
+        </div>
+
+        {/* Save form */}
+        {ytPlaylistInput.trim() && !showSaveForm && (
+          <button
+            onClick={() => setShowSaveForm(true)}
+            className="text-xs text-slate-400 hover:text-green-300 transition"
+          >
+            + Sauvegarder cette playlist
+          </button>
+        )}
+        {showSaveForm && (
+          <div className="flex gap-2 items-center">
+            <input
+              value={newPlName}
+              onChange={e => setNewPlName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && savePlaylist()}
+              placeholder="Nom de la playlist…"
+              className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-green-400 transition"
+              autoFocus
+            />
+            <button onClick={savePlaylist} disabled={!newPlName.trim()}
+              className="rounded-xl bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-40 transition">
+              Sauvegarder
+            </button>
+            <button onClick={() => { setShowSaveForm(false); setNewPlName(''); }}
+              className="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-400 hover:text-slate-200 transition">
+              Annuler
+            </button>
+          </div>
+        )}
+
+        {ytResult && (
+          <div className={`rounded-2xl border p-3 text-sm ${ytResult.success ? 'border-green-700 bg-green-950/40 text-green-300' : 'border-red-700 bg-red-950/40 text-red-300'}`}>
+            {ytResult.success ? '✓ Playlist lancée dans le navigateur' : `✗ ${ytResult.error}`}
+          </div>
+        )}
       </CollapsibleCard>
 
       {/* ── Discord ───────────────────────────────────────────────────────────── */}
