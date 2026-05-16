@@ -10,11 +10,11 @@ static EXE_BLACKLIST: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 static PATH_BLACKLIST: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(\\Package Cache\\|\\system32\\|\\syswow64\\|\\WINDOWS\\|\\Windows\\System|NvContainer|FrameViewSDK|WebView2|system_tray|\\CEF\\|\\bin64\\7z|CIM\\BIN)").unwrap()
+    Regex::new(r"(?i)(\\Package Cache\\|\\system32\\|\\syswow64\\|\\SysWOW64\\|\\WINDOWS\\|\\Windows\\System|NvContainer|FrameViewSDK|WebView2|system_tray|\\CEF\\|\\bin64\\7z|CIM\\BIN|\\WindowsApps\\|\\Microsoft\\WindowsApps)").unwrap()
 });
 
 static NAME_BLACKLIST: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)(uninstall|désinstaller|\binstall\b|setup|redistributable|runtime|visual c\+\+|\.net |directx|\bsdk\b|\bdriver\b|chipset|\bhal\b|vanguard|rockstar.*sdk|nvidia container|nvidia frame|edge webview|launcher prerequisites|windows desktop runtime|windows software development kit|visual studio installer|java.*se development kit|libreoffice base|libreoffice draw|libreoffice impress|libreoffice math|libreoffice writer|libreoffice calc|libreoffice 25|rawaccel|msi center|overwolf$|git (cmd|gui|bash)|roblox studio|microsoft visual studio code|node\.js|python 3\.|windows media player|copilot|onedrive|windows powersh|windows fax|technitium|ollama version|docker desktop)").unwrap()
+    Regex::new(r"(?i)(uninstall|désinstaller|install|setup|redistributable|runtime|visual c\+\+|\.net |directx|\bsdk\b|driver|chipset|\bhal\b|vanguard|rockstar.*sdk|wd.*p40|wd_black|verbatim|\bene \b|nvidia container|nvidia frame|edge webview|launcher prerequisites|windows desktop runtime|windows software development kit|windows app cert kit|visual studio installer|java.*se development kit|install additional tools|mode sans échec|safe mode|keyz rubidium|dropbox redeem|launch4j|\bidle\b.*python|libreoffice base|libreoffice draw|libreoffice impress|libreoffice math|libreoffice writer|libreoffice calc|libreoffice 25|writer\.exe|rawaccel|msi center|mumble \(client\)|logitech.*system.tray|overwolf$|git (cmd|gui|bash)|roblox.*for |roblox studio|microsoft visual studio code|node\.js|python 3\.|windows media player|copilot|onedrive|windows powersh|windows fax|technitium|ollama version|docker desktop)").unwrap()
 });
 
 static VERSION_SUFFIX: LazyLock<Regex> = LazyLock::new(|| {
@@ -27,6 +27,11 @@ static TRAIL_WORDS: LazyLock<Regex> = LazyLock::new(|| {
 
 static NON_ALNUM: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"[^\w\s]").unwrap()
+});
+
+// Squirrel launcher pattern: Update.exe --processStart X.exe
+static SQUIRREL_PROCESS_START: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)--processStart\s+([^\s]+\.exe)").unwrap()
 });
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -98,9 +103,22 @@ pub fn make_close_processes(command: &str) -> String {
 // ── Filtering & dedup ─────────────────────────────────────────────────────────
 
 pub fn filter_and_dedup(apps: Vec<ScannedApp>) -> Vec<ScannedApp> {
-    // Filter blacklists
-    let filtered: Vec<ScannedApp> = apps
-        .into_iter()
+    // STEP 1: Command-level dedup across all sources.
+    // Registry entries often have versioned names ("Blender 4.2.3") while Start Menu
+    // shortcuts for the same exe have cleaner names ("Blender").
+    // Prefer the entry with the shorter name (Start Menu names are usually cleaner).
+    let mut by_command: HashMap<String, ScannedApp> = HashMap::new();
+    for app in apps {
+        let key = app.command.to_lowercase();
+        let entry = by_command.entry(key).or_insert_with(|| app.clone());
+        if app.name.len() < entry.name.len() {
+            *entry = app;
+        }
+    }
+
+    // STEP 2: Apply blacklist filters
+    let filtered: Vec<ScannedApp> = by_command
+        .into_values()
         .filter(|app| {
             let exe_stem = Path::new(&app.command)
                 .file_stem()
@@ -114,7 +132,8 @@ pub fn filter_and_dedup(apps: Vec<ScannedApp>) -> Vec<ScannedApp> {
         })
         .collect();
 
-    // Dedup by name — keep shortest path
+    // STEP 3: Name-level dedup — same logical app with different exe paths,
+    // keep the shortest path (usually the main executable, not a subfolder variant).
     let mut by_name: HashMap<String, ScannedApp> = HashMap::new();
     for app in filtered {
         let key = app.name.to_lowercase();
@@ -219,8 +238,12 @@ pub fn scan_start_menu() -> Vec<ScannedApp> {
     for dir in &dirs {
         let lnk_files = collect_lnk_files(Path::new(dir), 4);
         for lnk_path in lnk_files {
-            let Some(target) = resolve_lnk(&lnk_path) else { continue };
-            if !target.to_lowercase().ends_with(".exe") || !Path::new(&target).exists() {
+            let Some(lnk) = resolve_lnk(&lnk_path) else { continue };
+
+            // Squirrel launchers: Update.exe --processStart X.exe → resolve real exe
+            let effective = squirrel_resolve(&lnk).unwrap_or_else(|| lnk.target.clone());
+
+            if !effective.to_lowercase().ends_with(".exe") || !Path::new(&effective).exists() {
                 continue;
             }
             let name = lnk_path
@@ -230,8 +253,8 @@ pub fn scan_start_menu() -> Vec<ScannedApp> {
                 .trim()
                 .to_string();
             if name.is_empty() { continue; }
-            let key = target.to_lowercase();
-            programs.entry(key).or_insert(ScannedApp { name, command: target });
+            let key = effective.to_lowercase();
+            programs.entry(key).or_insert(ScannedApp { name, command: effective });
         }
     }
 
@@ -253,18 +276,21 @@ fn collect_lnk_files(dir: &Path, depth: usize) -> Vec<std::path::PathBuf> {
     result
 }
 
-/// Parses an .lnk file (MS-SHLLINK spec) and returns the LocalBasePath.
-/// Handles the vast majority of installed-app shortcuts.
-fn resolve_lnk(lnk_path: &Path) -> Option<String> {
+struct LnkResolved {
+    target: String,
+    working_dir: Option<String>,
+    arguments: Option<String>,
+}
+
+/// Parses an .lnk file (MS-SHLLINK spec).
+/// Reads LocalBasePath (ANSI + Unicode fallback), WorkingDir, and Arguments.
+fn resolve_lnk(lnk_path: &Path) -> Option<LnkResolved> {
     let data = std::fs::read(lnk_path).ok()?;
     if data.len() < 76 { return None; }
-
-    // Magic: 0x4C000000 LE
     if data[0..4] != [0x4C, 0x00, 0x00, 0x00] { return None; }
 
     let link_flags = u32::from_le_bytes(data[20..24].try_into().ok()?);
-
-    let mut offset = 76usize; // ShellLinkHeader is always 76 bytes
+    let mut offset = 76usize;
 
     // HasLinkTargetIDList (bit 0) → skip IDList block
     if link_flags & 1 != 0 {
@@ -273,27 +299,101 @@ fn resolve_lnk(lnk_path: &Path) -> Option<String> {
         offset += 2 + id_list_size;
     }
 
-    // HasLinkInfo (bit 1) → read LocalBasePath
+    let mut target: Option<String> = None;
+
+    // HasLinkInfo (bit 1) → read LocalBasePath (ANSI first, then Unicode)
     if link_flags & 2 != 0 {
         if offset + 28 > data.len() { return None; }
 
         let link_info_size = u32::from_le_bytes(data[offset..offset + 4].try_into().ok()?) as usize;
-        let local_base_path_rel = u32::from_le_bytes(data[offset + 16..offset + 20].try_into().ok()?) as usize;
+        let header_size    = u32::from_le_bytes(data[offset + 4..offset + 8].try_into().ok()?) as usize;
+        let local_base_rel = u32::from_le_bytes(data[offset + 16..offset + 20].try_into().ok()?) as usize;
 
-        if local_base_path_rel > 0 {
-            let path_start = offset + local_base_path_rel;
-            if path_start < data.len() {
-                let end = data[path_start..].iter().position(|&b| b == 0).unwrap_or(0);
+        // ANSI path
+        if local_base_rel > 0 {
+            let start = offset + local_base_rel;
+            if start < data.len() {
+                let end = data[start..].iter().position(|&b| b == 0).unwrap_or(0);
                 if end > 0 {
-                    if let Ok(path) = std::str::from_utf8(&data[path_start..path_start + end]) {
-                        return Some(path.to_string());
+                    if let Ok(s) = std::str::from_utf8(&data[start..start + end]) {
+                        target = Some(s.to_string());
+                    }
+                }
+            }
+        }
+
+        // Unicode path (only if header >= 36 and ANSI was empty)
+        if target.is_none() && header_size >= 36 && offset + 32 < data.len() {
+            let unicode_rel = u32::from_le_bytes(data[offset + 28..offset + 32].try_into().ok()?) as usize;
+            if unicode_rel > 0 {
+                let start = offset + unicode_rel;
+                if start < data.len() {
+                    let chars: Vec<u16> = data[start..]
+                        .chunks_exact(2)
+                        .take_while(|c| c[0] != 0 || c[1] != 0)
+                        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                        .collect();
+                    if !chars.is_empty() {
+                        target = String::from_utf16(&chars).ok();
                     }
                 }
             }
         }
 
         offset += link_info_size;
-        let _ = offset; // silence unused warning
+    }
+
+    let target = target?;
+
+    // StringData: CountedString (2-byte UTF-16 char count + UTF-16LE chars, no null)
+    let read_counted = |off: &mut usize| -> Option<String> {
+        if *off + 2 > data.len() { return None; }
+        let count = u16::from_le_bytes(data[*off..*off + 2].try_into().ok()?) as usize;
+        *off += 2;
+        if *off + count * 2 > data.len() { *off += count * 2; return None; }
+        let chars: Vec<u16> = data[*off..*off + count * 2]
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        *off += count * 2;
+        String::from_utf16(&chars).ok()
+    };
+
+    // Bit 2: HasName, Bit 3: HasRelativePath, Bit 4: HasWorkingDir, Bit 5: HasArguments
+    if link_flags & (1 << 2) != 0 { read_counted(&mut offset); } // NAME_STRING (skip)
+    if link_flags & (1 << 3) != 0 { read_counted(&mut offset); } // RELATIVE_PATH (skip)
+    let working_dir = if link_flags & (1 << 4) != 0 { read_counted(&mut offset) } else { None };
+    let arguments   = if link_flags & (1 << 5) != 0 { read_counted(&mut offset) } else { None };
+
+    Some(LnkResolved { target, working_dir, arguments })
+}
+
+/// Squirrel installer pattern: shortcut → Update.exe --processStart RealApp.exe
+/// WorkingDirectory = app-X.X.XXXX\ folder containing the real exe.
+fn squirrel_resolve(lnk: &LnkResolved) -> Option<String> {
+    let stem = Path::new(&lnk.target)
+        .file_stem()
+        .and_then(|s| s.to_str())?
+        .to_lowercase();
+    if stem != "update" { return None; }
+
+    let args = lnk.arguments.as_deref().unwrap_or("");
+    let cap = SQUIRREL_PROCESS_START.captures(args)?;
+    let exe_name = cap.get(1)?.as_str();
+
+    // First try WorkingDirectory (most reliable)
+    if let Some(wd) = &lnk.working_dir {
+        let p = Path::new(wd).join(exe_name);
+        if p.exists() { return Some(p.to_string_lossy().to_string()); }
+    }
+
+    // Fallback: scan sibling directories of Update.exe for the exe
+    let parent = Path::new(&lnk.target).parent()?;
+    for entry in std::fs::read_dir(parent).ok()?.flatten() {
+        let candidate = entry.path().join(exe_name);
+        if candidate.exists() {
+            return Some(candidate.to_string_lossy().to_string());
+        }
     }
 
     None
