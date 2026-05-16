@@ -1,4 +1,6 @@
-use axum::{extract::{Json, State}, response::IntoResponse, http::StatusCode};
+use axum::{extract::{Json, State}, response::{IntoResponse, sse::{Event, Sse}}, http::StatusCode};
+use tokio_stream::wrappers::ReceiverStream;
+use std::convert::Infallible;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -768,4 +770,54 @@ pub async fn delete_app_handler(
         },
         _ => Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Invalid or expired token" })))),
     }
+}
+
+#[derive(serde::Serialize)]
+struct ScanEvent {
+    step: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    inserted: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    updated: Option<usize>,
+}
+
+pub async fn scan_apps_handler(
+    State(db): State<Arc<Database>>,
+    BearerToken(token): BearerToken,
+) -> Result<Sse<ReceiverStream<Result<Event, Infallible>>>, (StatusCode, Json<Value>)> {
+    match db.get_user_id_from_token(&token) {
+        Ok(Some(_)) => {}
+        _ => return Err((StatusCode::UNAUTHORIZED, Json(json!({ "error": "Unauthorized" })))),
+    }
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(16);
+    let db_clone = Arc::clone(&db);
+
+    tokio::task::spawn_blocking(move || {
+        use crate::actions::scanner;
+
+        let send = |ev: ScanEvent| {
+            let data = serde_json::to_string(&ev).unwrap_or_default();
+            let _ = tx.blocking_send(Ok(Event::default().data(data)));
+        };
+
+        send(ScanEvent { step: "scanning_registry", total: None, inserted: None, updated: None });
+        let mut apps = scanner::scan_registry();
+
+        send(ScanEvent { step: "scanning_startmenu", total: None, inserted: None, updated: None });
+        apps.extend(scanner::scan_start_menu());
+
+        let filtered = scanner::filter_and_dedup(apps);
+        let total = filtered.len();
+
+        send(ScanEvent { step: "inserting", total: Some(total), inserted: None, updated: None });
+
+        let (inserted, updated) = db_clone.upsert_apps_from_scan(&filtered).unwrap_or((0, 0));
+
+        send(ScanEvent { step: "done", total: Some(total), inserted: Some(inserted), updated: Some(updated) });
+    });
+
+    Ok(Sse::new(ReceiverStream::new(rx)))
 }

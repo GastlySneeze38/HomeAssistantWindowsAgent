@@ -307,9 +307,11 @@ function App() {
             {activeView === 'apps' && (
               <AppsSection
                 apps={apps}
+                token={token}
                 onAdd={addApp}
                 onDelete={deleteApp}
                 onLaunch={launchAppByName}
+                onRefreshApps={fetchApps}
               />
             )}
 

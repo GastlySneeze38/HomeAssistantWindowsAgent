@@ -343,6 +343,46 @@ impl Database {
         Ok(())
     }
 
+    pub fn upsert_apps_from_scan(
+        &self,
+        apps: &[crate::actions::scanner::ScannedApp],
+    ) -> SqlResult<(usize, usize)> {
+        use crate::actions::scanner::{make_aliases, make_close_processes};
+        let conn = self.conn.lock().unwrap();
+        let mut inserted = 0usize;
+        let mut updated = 0usize;
+
+        for app in apps {
+            let aliases = make_aliases(&app.name);
+            let close_procs = make_close_processes(&app.command);
+
+            let exists: bool = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM apps WHERE LOWER(name) = LOWER(?1)",
+                    rusqlite::params![app.name],
+                    |row| row.get::<_, i32>(0),
+                )
+                .unwrap_or(0)
+                > 0;
+
+            if exists {
+                conn.execute(
+                    "UPDATE apps SET path=?1, aliases=?2, close_processes=?3 WHERE LOWER(name) = LOWER(?4)",
+                    rusqlite::params![app.command, aliases, close_procs, app.name],
+                )?;
+                updated += 1;
+            } else {
+                conn.execute(
+                    "INSERT INTO apps (name, path, aliases, close_processes) VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![app.name, app.command, aliases, close_procs],
+                )?;
+                inserted += 1;
+            }
+        }
+
+        Ok((inserted, updated))
+    }
+
     pub fn delete_app(&self, name: &str) -> SqlResult<bool> {
         let conn = self.conn.lock().unwrap();
         let rows = conn.execute("DELETE FROM apps WHERE LOWER(name) = LOWER(?1)", params![name])?;

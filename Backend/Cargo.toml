@@ -22,6 +22,13 @@ nvml-wrapper = "0.10"
 windows = { version = "0.58", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_UI_Shell",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Threading",
 ] }
 reqwest = { version = "0.12", features = ["json"] }
 zip = "2"
+winreg = "0.52"
+regex = "1"
+tokio-stream = "0.1"

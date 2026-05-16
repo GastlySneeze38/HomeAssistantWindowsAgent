@@ -4,4 +4,5 @@ pub mod discord;
 pub mod launcher;
 pub mod openrgb_manager;
 pub mod rgb;
+pub mod scanner;
 pub mod youtube_music;
