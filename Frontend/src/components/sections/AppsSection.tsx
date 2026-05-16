@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from 'react';
 import { AppEntry } from '../../types';
 import { useFavorites } from '../../hooks/useFavorites';
 
-type ScanStep = 'scanning_registry' | 'scanning_startmenu' | 'inserting' | 'done' | null;
+type ScanStep = 'scanning_registry' | 'scanning_startmenu' | 'scanning_launchers' | 'inserting' | 'done' | null;
 
 type ScanState = {
   step: ScanStep;
@@ -38,6 +38,7 @@ function appIcon(name: string) {
 const STEP_LABELS: Record<string, string> = {
   scanning_registry: 'Recherche dans le registre Windows…',
   scanning_startmenu: 'Recherche dans le menu Démarrer…',
+  scanning_launchers: 'Recherche dans les launchers (Steam, Epic, GOG)…',
   inserting: 'Insertion dans la base de données…',
   done: 'Terminé !',
 };
@@ -284,8 +285,8 @@ export default function AppsSection({ apps, token, onAdd, onDelete, onLaunch, on
           <h3 className="text-lg font-semibold text-violet-300 mb-5">Importation des applications</h3>
 
           <div className="space-y-3">
-            {(['scanning_registry', 'scanning_startmenu', 'inserting', 'done'] as ScanStep[]).map((s) => {
-              const steps: ScanStep[] = ['scanning_registry', 'scanning_startmenu', 'inserting', 'done'];
+            {(['scanning_registry', 'scanning_startmenu', 'scanning_launchers', 'inserting', 'done'] as ScanStep[]).map((s) => {
+              const steps: ScanStep[] = ['scanning_registry', 'scanning_startmenu', 'scanning_launchers', 'inserting', 'done'];
               const currentIdx = steps.indexOf(scanState.step ?? 'scanning_registry');
               const thisIdx = steps.indexOf(s!);
               const isDone = thisIdx < currentIdx || scanState.step === 'done';

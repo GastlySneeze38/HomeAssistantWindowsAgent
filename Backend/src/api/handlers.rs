@@ -809,6 +809,9 @@ pub async fn scan_apps_handler(
         send(ScanEvent { step: "scanning_startmenu", total: None, inserted: None, updated: None });
         apps.extend(scanner::scan_start_menu());
 
+        send(ScanEvent { step: "scanning_launchers", total: None, inserted: None, updated: None });
+        apps.extend(scanner::scan_launcher_games());
+
         let filtered = scanner::filter_and_dedup(apps);
         let total = filtered.len();
 

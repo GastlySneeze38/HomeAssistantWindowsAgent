@@ -100,6 +100,239 @@ pub fn make_close_processes(command: &str) -> String {
     }
 }
 
+// ── Launcher game scans ───────────────────────────────────────────────────────
+
+static GAME_HELPER_EXE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(crash|handler|helper|setup|install|unins|update|redist|shader|compile|benchmark|anti.?cheat|eac|battleye|be_launcher|squirrel|unityCrashHandler|UnityCrashHandler|dxsetup|vc_redist|dotnet|prereq)").unwrap()
+});
+
+pub fn scan_launcher_games() -> Vec<ScannedApp> {
+    let mut apps = Vec::new();
+    apps.extend(scan_steam_games());
+    apps.extend(scan_epic_games());
+    apps.extend(scan_gog_games());
+    apps
+}
+
+// ── Steam ────────────────────────────────────────────────────────────────────
+
+pub fn scan_steam_games() -> Vec<ScannedApp> {
+    use winreg::enums::*;
+    use winreg::RegKey;
+
+    // Find Steam path from registry
+    let steam_path: Option<String> = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(r"SOFTWARE\Valve\Steam")
+        .ok()
+        .and_then(|k| k.get_value("SteamPath").ok())
+        .or_else(|| {
+            RegKey::predef(HKEY_LOCAL_MACHINE)
+                .open_subkey(r"SOFTWARE\WOW6432Node\Valve\Steam")
+                .ok()
+                .and_then(|k| k.get_value("InstallPath").ok())
+        });
+
+    let Some(steam_path) = steam_path else { return vec![] };
+    let steam_path = steam_path.replace('/', "\\");
+    let default_steamapps = Path::new(&steam_path).join("steamapps");
+
+    // Collect all library paths from libraryfolders.vdf
+    let mut library_steamapps: Vec<std::path::PathBuf> = vec![default_steamapps.clone()];
+    let vdf_path = default_steamapps.join("libraryfolders.vdf");
+    if let Ok(content) = std::fs::read_to_string(&vdf_path) {
+        let re = Regex::new(r#""path"\s+"([^"]+)""#).unwrap();
+        for cap in re.captures_iter(&content) {
+            let p = cap[1].replace("\\\\", "\\");
+            let lib = Path::new(&p).join("steamapps");
+            if lib.exists() && lib != default_steamapps {
+                library_steamapps.push(lib);
+            }
+        }
+    }
+
+    let mut apps = Vec::new();
+
+    for lib in &library_steamapps {
+        let Ok(entries) = std::fs::read_dir(lib) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let fname = path.file_name().and_then(|f| f.to_str()).unwrap_or("");
+            if !fname.starts_with("appmanifest_") || path.extension().and_then(|e| e.to_str()) != Some("acf") {
+                continue;
+            }
+
+            let Ok(content) = std::fs::read_to_string(&path) else { continue };
+
+            // Only fully installed games (StateFlags bit 2 set = 4)
+            let state: u32 = vdf_value(&content, "StateFlags")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0);
+            if state & 4 == 0 { continue; }
+
+            let name = vdf_value(&content, "name").unwrap_or_default();
+            let install_dir = vdf_value(&content, "installdir").unwrap_or_default();
+            if name.is_empty() || install_dir.is_empty() { continue; }
+
+            let game_path = lib.join("common").join(&install_dir);
+            if !game_path.exists() { continue; }
+
+            if let Some(exe) = find_game_exe(&game_path, &name) {
+                apps.push(ScannedApp { name, command: exe });
+            }
+        }
+    }
+
+    apps
+}
+
+/// Extract first matching key="value" from a Valve KeyValues (VDF/ACF) file.
+fn vdf_value(content: &str, key: &str) -> Option<String> {
+    let prefix = format!(r#""{key}""#);
+    for line in content.lines() {
+        let t = line.trim();
+        if t.starts_with(&prefix) {
+            let rest = t[prefix.len()..].trim();
+            if rest.starts_with('"') && rest.len() > 1 {
+                let end = rest[1..].find('"')? + 1;
+                return Some(rest[1..end].to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Find the most likely main executable for a game in a directory.
+/// Scans root first, then one level deep. Scores by similarity to game name.
+fn find_game_exe(dir: &Path, game_name: &str) -> Option<String> {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+    // Root level exes
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if !p.is_file() { continue; }
+            if !p.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("exe")).unwrap_or(false) { continue; }
+            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+            if !GAME_HELPER_EXE.is_match(&stem) {
+                candidates.push(p);
+            }
+        }
+    }
+
+    // One level deep if nothing at root
+    if candidates.is_empty() {
+        if let Ok(subdirs) = std::fs::read_dir(dir) {
+            for subdir_entry in subdirs.flatten() {
+                let subdir = subdir_entry.path();
+                if !subdir.is_dir() { continue; }
+                if let Ok(entries) = std::fs::read_dir(&subdir) {
+                    for entry in entries.flatten() {
+                        let p = entry.path();
+                        if !p.is_file() { continue; }
+                        if !p.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("exe")).unwrap_or(false) { continue; }
+                        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+                        if !GAME_HELPER_EXE.is_match(&stem) {
+                            candidates.push(p);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if candidates.is_empty() { return None; }
+
+    // Score: prefer exe whose name best matches the game name
+    let name_clean: String = game_name.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
+
+    candidates.sort_by_key(|p| {
+        let stem: String = p.file_stem().and_then(|s| s.to_str()).unwrap_or("")
+            .to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
+        if stem == name_clean { 0u8 }
+        else if name_clean.contains(&stem) || stem.contains(&name_clean) { 1 }
+        else { 2 }
+    });
+
+    candidates.first().map(|p| p.to_string_lossy().to_string())
+}
+
+// ── Epic Games ───────────────────────────────────────────────────────────────
+
+pub fn scan_epic_games() -> Vec<ScannedApp> {
+    let manifests_dir = Path::new(r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests");
+    if !manifests_dir.exists() { return vec![]; }
+
+    let Ok(entries) = std::fs::read_dir(manifests_dir) else { return vec![] };
+    let mut apps = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("item") { continue; }
+
+        let Ok(content) = std::fs::read_to_string(&path) else { continue };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) else { continue };
+
+        if json["bIsIncompleteInstall"].as_bool().unwrap_or(false) { continue; }
+        if !json["bIsApplication"].as_bool().unwrap_or(true) { continue; }
+
+        let name = json["DisplayName"].as_str().unwrap_or("").trim().to_string();
+        let install_loc = json["InstallLocation"].as_str().unwrap_or("");
+        let launch_exe = json["LaunchExecutable"].as_str().unwrap_or("");
+
+        if name.is_empty() || install_loc.is_empty() || launch_exe.is_empty() { continue; }
+
+        let full_path = Path::new(install_loc).join(launch_exe);
+        if full_path.exists() {
+            apps.push(ScannedApp { name, command: full_path.to_string_lossy().to_string() });
+        }
+    }
+
+    apps
+}
+
+// ── GOG Galaxy ───────────────────────────────────────────────────────────────
+
+pub fn scan_gog_games() -> Vec<ScannedApp> {
+    use winreg::enums::*;
+    use winreg::RegKey;
+
+    let Ok(key) = RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey(r"SOFTWARE\WOW6432Node\GOG.com\Games") else { return vec![] };
+
+    let mut apps = Vec::new();
+
+    for subkey_name in key.enum_keys().flatten() {
+        let Ok(sub) = key.open_subkey(&subkey_name) else { continue };
+
+        let name: String = sub.get_value("GAMENAME")
+            .or_else(|_| sub.get_value("gameName"))
+            .unwrap_or_default();
+        let path: String = sub.get_value("PATH")
+            .or_else(|_| sub.get_value("path"))
+            .unwrap_or_default();
+        let exe: String = sub.get_value("EXE")
+            .or_else(|_| sub.get_value("exe"))
+            .unwrap_or_default();
+
+        if name.is_empty() || path.is_empty() { continue; }
+
+        let full_exe = if exe.is_empty() {
+            find_game_exe(Path::new(&path), &name)
+        } else if Path::new(&exe).is_absolute() {
+            if Path::new(&exe).exists() { Some(exe) } else { None }
+        } else {
+            let p = Path::new(&path).join(&exe);
+            if p.exists() { Some(p.to_string_lossy().to_string()) } else { None }
+        };
+
+        if let Some(cmd) = full_exe {
+            apps.push(ScannedApp { name, command: cmd });
+        }
+    }
+
+    apps
+}
+
 // ── Filtering & dedup ─────────────────────────────────────────────────────────
 
 pub fn filter_and_dedup(apps: Vec<ScannedApp>) -> Vec<ScannedApp> {
