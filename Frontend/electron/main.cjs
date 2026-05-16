@@ -209,9 +209,27 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('window-all-closed', () => {
-  if (backendProcess) backendProcess.kill();
-  // OpenRGB ne reçoit pas le signal d'arrêt quand le backend est tué brutalement
+let isQuitting = false;
+
+app.on('before-quit', async (event) => {
+  if (isQuitting) return;
+  event.preventDefault();
+  isQuitting = true;
+
+  if (backendProcess) {
+    try {
+      await fetch('http://127.0.0.1:3000/shutdown', { method: 'POST' });
+    } catch (_) {}
+    await new Promise((resolve) => {
+      const timeout = setTimeout(() => { backendProcess.kill(); resolve(); }, 3000);
+      backendProcess.once('exit', () => { clearTimeout(timeout); resolve(); });
+    });
+  }
+
   spawn('taskkill', ['/F', '/IM', 'OpenRGB.exe'], { detached: true, stdio: 'ignore' });
+  app.quit();
+});
+
+app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });

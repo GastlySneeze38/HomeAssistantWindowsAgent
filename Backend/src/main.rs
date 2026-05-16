@@ -10,13 +10,25 @@ use axum::{
 };
 use core::database::Database;
 use socket2::{Domain, Protocol, Socket, Type};
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc, sync::OnceLock};
+use tokio::sync::watch;
 use tower_http::cors::{Any, CorsLayer};
+
+static SHUTDOWN_TX: OnceLock<watch::Sender<bool>> = OnceLock::new();
+
+pub fn trigger_shutdown() {
+    if let Some(tx) = SHUTDOWN_TX.get() {
+        let _ = tx.send(true);
+    }
+}
 
 #[tokio::main]
 async fn main() {
     let db = Arc::new(Database::new().expect("Falha ao inicializar banco de dados"));
     core::init::init_default_user(&db);
+
+    let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
+    SHUTDOWN_TX.set(shutdown_tx).ok();
 
     // Start OpenRGB headless server (downloads automatically if missing)
     let openrgb = Arc::new(OpenRgbManager::new());
@@ -32,6 +44,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(api::handlers::health_handler))
+        .route("/shutdown", post(api::handlers::shutdown_handler))
         .route("/setup/status", get(api::handlers::setup_status_handler))
         .route("/setup/finalize", post(api::handlers::setup_finalize_handler))
         .route("/launch", post(api::handlers::launch_handler))
@@ -82,7 +95,15 @@ async fn main() {
 
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
-            tokio::signal::ctrl_c().await.ok();
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = async {
+                    loop {
+                        if *shutdown_rx.borrow() { break; }
+                        shutdown_rx.changed().await.ok();
+                    }
+                } => {}
+            }
             openrgb.stop().await;
         })
         .await

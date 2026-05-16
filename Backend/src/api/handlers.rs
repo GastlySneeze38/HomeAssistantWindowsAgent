@@ -32,6 +32,11 @@ pub async fn health_handler() -> impl IntoResponse {
     "OK"
 }
 
+pub async fn shutdown_handler() -> impl IntoResponse {
+    crate::trigger_shutdown();
+    StatusCode::OK
+}
+
 pub async fn setup_status_handler(
     State(db): State<Arc<Database>>,
 ) -> Json<serde_json::Value> {
