@@ -367,14 +367,14 @@ impl Database {
 
             if exists {
                 conn.execute(
-                    "UPDATE apps SET path=?1, aliases=?2, close_processes=?3 WHERE LOWER(name) = LOWER(?4)",
-                    rusqlite::params![app.command, aliases, close_procs, app.name],
+                    "UPDATE apps SET path=?1, args=?2, aliases=?3, close_processes=?4 WHERE LOWER(name) = LOWER(?5)",
+                    rusqlite::params![app.command, app.args, aliases, close_procs, app.name],
                 )?;
                 updated += 1;
             } else {
                 conn.execute(
-                    "INSERT INTO apps (name, path, aliases, close_processes) VALUES (?1, ?2, ?3, ?4)",
-                    rusqlite::params![app.name, app.command, aliases, close_procs],
+                    "INSERT INTO apps (name, path, args, aliases, close_processes) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![app.name, app.command, app.args, aliases, close_procs],
                 )?;
                 inserted += 1;
             }

@@ -40,6 +40,7 @@ static SQUIRREL_PROCESS_START: LazyLock<Regex> = LazyLock::new(|| {
 pub struct ScannedApp {
     pub name: String,
     pub command: String,
+    pub args: Option<String>,
 }
 
 // ── Alias / close_processes generation ───────────────────────────────────────
@@ -177,7 +178,7 @@ pub fn scan_steam_games() -> Vec<ScannedApp> {
             if !game_path.exists() { continue; }
 
             if let Some(exe) = find_game_exe(&game_path, &name) {
-                apps.push(ScannedApp { name, command: exe });
+                apps.push(ScannedApp { name, command: exe, args: None });
             }
         }
     }
@@ -283,7 +284,7 @@ pub fn scan_epic_games() -> Vec<ScannedApp> {
 
         let full_path = Path::new(install_loc).join(launch_exe);
         if full_path.exists() {
-            apps.push(ScannedApp { name, command: full_path.to_string_lossy().to_string() });
+            apps.push(ScannedApp { name, command: full_path.to_string_lossy().to_string(), args: None });
         }
     }
 
@@ -326,7 +327,7 @@ pub fn scan_gog_games() -> Vec<ScannedApp> {
         };
 
         if let Some(cmd) = full_exe {
-            apps.push(ScannedApp { name, command: cmd });
+            apps.push(ScannedApp { name, command: cmd, args: None });
         }
     }
 
@@ -376,7 +377,32 @@ pub fn filter_and_dedup(apps: Vec<ScannedApp>) -> Vec<ScannedApp> {
         }
     }
 
-    let mut result: Vec<ScannedApp> = by_name.into_values().collect();
+    // STEP 4: Remap known anti-cheat games that cannot be launched directly.
+    // These games block direct exe execution (OS error 5) and must go through their launcher.
+    let riot_client = r"C:\Riot Games\Riot Client\RiotClientServices.exe";
+    let riot_remaps: &[(&str, &str, &str)] = &[
+        ("valorant", riot_client, "--launch-product=valorant --launch-patchline=live"),
+        ("league of legends", riot_client, "--launch-product=league_of_legends --launch-patchline=live"),
+        ("teamfight tactics", riot_client, "--launch-product=league_of_legends --launch-patchline=live"),
+        ("legends of runeterra", riot_client, "--launch-product=bacon --launch-patchline=live"),
+        ("wild rift", riot_client, "--launch-product=wildrift --launch-patchline=live"),
+    ];
+
+    let mut result: Vec<ScannedApp> = by_name
+        .into_values()
+        .map(|mut app| {
+            let name_lc = app.name.to_lowercase();
+            for (pattern, launcher, args) in riot_remaps {
+                if name_lc.contains(pattern) && Path::new(launcher).exists() {
+                    app.command = launcher.to_string();
+                    app.args = Some(args.to_string());
+                    break;
+                }
+            }
+            app
+        })
+        .collect();
+
     result.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     result
 }
@@ -448,6 +474,7 @@ pub fn scan_registry() -> Vec<ScannedApp> {
                 programs.entry(key).or_insert(ScannedApp {
                     name: name.trim().to_string(),
                     command: cmd,
+                    args: None,
                 });
             }
         }
@@ -474,7 +501,9 @@ pub fn scan_start_menu() -> Vec<ScannedApp> {
             let Some(lnk) = resolve_lnk(&lnk_path) else { continue };
 
             // Squirrel launchers: Update.exe --processStart X.exe → resolve real exe
-            let effective = squirrel_resolve(&lnk).unwrap_or_else(|| lnk.target.clone());
+            let squirrel = squirrel_resolve(&lnk);
+            let is_squirrel = squirrel.is_some();
+            let effective = squirrel.unwrap_or_else(|| lnk.target.clone());
 
             if !effective.to_lowercase().ends_with(".exe") || !Path::new(&effective).exists() {
                 continue;
@@ -486,8 +515,19 @@ pub fn scan_start_menu() -> Vec<ScannedApp> {
                 .trim()
                 .to_string();
             if name.is_empty() { continue; }
+
+            // Preserve .lnk arguments (e.g. --launch-product=valorant) unless it was a Squirrel launch
+            let lnk_args = if !is_squirrel {
+                lnk.arguments.as_deref()
+                    .map(|a| a.trim())
+                    .filter(|a| !a.is_empty())
+                    .map(|a| a.to_string())
+            } else {
+                None
+            };
+
             let key = effective.to_lowercase();
-            programs.entry(key).or_insert(ScannedApp { name, command: effective });
+            programs.entry(key).or_insert(ScannedApp { name, command: effective, args: lnk_args });
         }
     }
 
