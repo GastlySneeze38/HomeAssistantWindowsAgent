@@ -32,3 +32,4 @@ zip = "2"
 winreg = "0.52"
 regex = "1"
 tokio-stream = "0.1"
+socket2 = { version = "0.5", features = ["all"] }

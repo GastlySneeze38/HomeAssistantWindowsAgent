@@ -9,6 +9,7 @@ use axum::{
     Router,
 };
 use core::database::Database;
+use socket2::{Domain, Protocol, Socket, Type};
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::cors::{Any, CorsLayer};
 
@@ -72,9 +73,12 @@ async fn main() {
         .with_state(db);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)).unwrap();
+    socket.set_reuse_address(true).unwrap();
+    socket.bind(&addr.into()).unwrap();
+    socket.listen(128).unwrap();
+    let listener = tokio::net::TcpListener::from_std(socket.into()).unwrap();
     println!("Listening on http://{}", addr);
-
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
