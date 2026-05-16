@@ -41,13 +41,14 @@ function App() {
   const [deleteUserId, setDeleteUserId] = useState('');
   const [deleteUserPassword, setDeleteUserPassword] = useState('');
 
-  // Setup check
+  // Setup check — re-runs each time the backend becomes reachable
   useEffect(() => {
+    if (!backendHealthy) return;
     fetch('http://127.0.0.1:3000/setup/status')
       .then((r) => r.json())
       .then((d) => setNeedsSetup(d.needs_setup === true))
       .catch(() => setNeedsSetup(false));
-  }, []);
+  }, [backendHealthy]);
 
   // Backend health poll
   useEffect(() => {
@@ -79,24 +80,26 @@ function App() {
 
   useWebSocket({ token, onMessage: handleWsMessage, onStatusChange: handleWsStatus });
 
-  const handleLogout = async () => {
-    try {
-      if (token) {
-        await fetch('http://127.0.0.1:3000/logout', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-    } catch (err) {
-      setError("Erreur lors de l'appel au backend : " + err);
-    }
+  const handleLogout = () => {
+    const currentToken = token;
     setToken(null);
     localStorage.removeItem('token');
+    if (currentToken) {
+      fetch('http://127.0.0.1:3000/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${currentToken}` },
+      }).catch(() => {});
+    }
   };
 
   const handleUnauthorized = (errMessage: string) => {
     if (errMessage === 'UNAUTHORIZED') {
-      handleLogout();
+      // Ignore si on est déjà déconnecté (token déjà null)
+      setToken((prev) => {
+        if (prev === null) return null;
+        localStorage.removeItem('token');
+        return null;
+      });
     } else {
       setError("Erreur lors de l'appel au backend : " + errMessage);
       setIsOnline(false);

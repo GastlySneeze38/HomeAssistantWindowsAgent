@@ -626,7 +626,17 @@ export default function ControlSection({
         {/* ── Message ── */}
         {discordTab === 'message' && (
           <div className="space-y-3">
-            {!discordBotOk && <p className="text-xs text-yellow-400">⚠️ Configure le bot dans l'onglet Discord.</p>}
+            {!discordBotOk && (
+              <div className="rounded-2xl border border-yellow-700/60 bg-yellow-950/20 px-4 py-3 flex items-start gap-3">
+                <span className="text-yellow-400 text-base mt-0.5">⚠️</span>
+                <div>
+                  <p className="text-sm font-semibold text-yellow-300">Bot Discord non configuré</p>
+                  <p className="text-xs text-yellow-500 mt-0.5">
+                    Veuillez configurer le token du bot dans la section <span className="font-medium text-yellow-300">💬 Discord</span> de la barre de navigation.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <input value={msgChannelId} onChange={e => setMsgChannelId(e.target.value)}
               placeholder="ID du salon texte (123456789…)"
@@ -685,7 +695,17 @@ export default function ControlSection({
         {/* ── Vocal ── */}
         {discordTab === 'voice' && (
           <div className="space-y-3">
-            {!discordAppOk && <p className="text-xs text-yellow-400">⚠️ Configure l'Application ID dans l'onglet Discord.</p>}
+            {!discordAppOk && (
+              <div className="rounded-2xl border border-yellow-700/60 bg-yellow-950/20 px-4 py-3 flex items-start gap-3">
+                <span className="text-yellow-400 text-base mt-0.5">⚠️</span>
+                <div>
+                  <p className="text-sm font-semibold text-yellow-300">Application Discord non configurée</p>
+                  <p className="text-xs text-yellow-500 mt-0.5">
+                    Veuillez configurer l'Application ID dans la section <span className="font-medium text-yellow-300">💬 Discord</span> de la barre de navigation.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <input value={voiceGuildId} onChange={e => setVoiceGuildId(e.target.value)}
               placeholder="ID du serveur (123456789…)"

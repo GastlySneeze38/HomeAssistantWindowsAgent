@@ -239,8 +239,10 @@ export default function AutomationSection({ token, onUnauthorized }: Props) {
   const [profiles, setProfiles]     = useState<GameProfile[]>([]);
   const [playlists, setPlaylists]   = useState<YoutubePlaylist[]>([]);
   const [apps, setApps]             = useState<AppEntry[]>([]);
+  const [appsLoaded, setAppsLoaded] = useState(false);
   const [roles, setRoles]           = useState<DiscordRole[]>([]);
   const [members, setMembers]       = useState<DiscordMember[]>([]);
+  const [botConfigured, setBotConfigured] = useState<boolean | null>(null);
   const [selected, setSelected]     = useState<GameProfile | null>(null);
   const [isNew, setIsNew]           = useState(false);
   const [saving, setSaving]         = useState(false);
@@ -263,9 +265,11 @@ export default function AutomationSection({ token, onUnauthorized }: Props) {
   useEffect(() => {
     loadProfiles();
     api('/youtube/playlists').then(r => r.json()).then(setPlaylists).catch(() => {});
-    api('/apps').then(r => r.json()).then((d: AppEntry[]) =>
-      setApps(d.sort((a, b) => a.name.localeCompare(b.name)))
-    ).catch(() => {});
+    api('/apps').then(r => r.json()).then((d: AppEntry[]) => {
+      setApps(d.sort((a, b) => a.name.localeCompare(b.name)));
+      setAppsLoaded(true);
+    }).catch(() => { setAppsLoaded(true); });
+    api('/discord/config').then(r => r.json()).then(d => setBotConfigured(d.bot_configured)).catch(() => {});
     api('/discord/roles').then(r => r.json()).then(setRoles).catch(() => {});
     api('/discord/members').then(r => r.json()).then(setMembers).catch(() => {});
   }, [api, loadProfiles]);
@@ -462,10 +466,14 @@ export default function AutomationSection({ token, onUnauthorized }: Props) {
                 <div className="rounded-2xl border border-orange-900/60 bg-orange-950/10 p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-orange-300">🎮 Jeu associé</p>
-                    <button onClick={() => setShowPicker(true)} disabled={apps.length === 0}
-                      className="rounded-xl bg-orange-500 hover:bg-orange-400 disabled:opacity-40 text-slate-950 font-semibold px-3 py-1.5 text-xs transition">
-                      {apps.length === 0 ? 'Chargement…' : 'Choisir un jeu installé'}
-                    </button>
+                    {appsLoaded && apps.length === 0 ? (
+                      <span className="text-xs text-yellow-400">⚠️ Aucune app — ajoutez-en dans la section <span className="font-semibold">Apps</span></span>
+                    ) : (
+                      <button onClick={() => setShowPicker(true)} disabled={!appsLoaded}
+                        className="rounded-xl bg-orange-500 hover:bg-orange-400 disabled:opacity-40 text-slate-950 font-semibold px-3 py-1.5 text-xs transition">
+                        {appsLoaded ? 'Choisir un jeu installé' : 'Chargement…'}
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Field label="Nom du profil">
@@ -523,41 +531,64 @@ export default function AutomationSection({ token, onUnauthorized }: Props) {
 
                 {/* ── Discord voice ── */}
                 <CollapsibleBlock icon="🎙" title="Discord — Salon vocal" color="indigo" badge={discordVoiceBadge}>
-                  <p className="text-xs text-slate-500">IDs via clic droit dans Discord (mode développeur requis).</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="Guild ID (serveur)">
-                      <TextInput value={str(selected.discord_guild_id)} onChange={v => set('discord_guild_id', nullable(v))} placeholder="123456789012345678" mono />
-                    </Field>
-                    <Field label="Channel ID (vocal)">
-                      <TextInput value={str(selected.discord_voice_channel_id)} onChange={v => set('discord_voice_channel_id', nullable(v))} placeholder="123456789012345678" mono />
-                    </Field>
-                  </div>
+                  {botConfigured === false ? (
+                    <div className="rounded-xl border border-yellow-700/60 bg-yellow-950/20 px-4 py-3 flex items-start gap-3">
+                      <span className="text-yellow-400 mt-0.5">⚠️</span>
+                      <div>
+                        <p className="text-sm font-semibold text-yellow-300">Bot Discord non configuré</p>
+                        <p className="text-xs text-yellow-500 mt-0.5">Veuillez configurer le token du bot dans la section <span className="font-medium text-yellow-300">💬 Discord</span>.</p>
+                      </div>
+                    </div>
+                  ) : (
+                  <>
+                    <p className="text-xs text-slate-500">IDs via clic droit dans Discord (mode développeur requis).</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Field label="Guild ID (serveur)">
+                        <TextInput value={str(selected.discord_guild_id)} onChange={v => set('discord_guild_id', nullable(v))} placeholder="123456789012345678" mono />
+                      </Field>
+                      <Field label="Channel ID (vocal)">
+                        <TextInput value={str(selected.discord_voice_channel_id)} onChange={v => set('discord_voice_channel_id', nullable(v))} placeholder="123456789012345678" mono />
+                      </Field>
+                    </div>
+                  </>
+                  )}
                 </CollapsibleBlock>
 
                 {/* ── Discord message ── */}
                 <CollapsibleBlock icon="💬" title="Discord — Message" color="indigo" badge={discordMsgBadge}>
-                  <p className="text-xs text-slate-500">Envoie un message automatique dans un salon texte au lancement du jeu.</p>
-                  <Field label="Channel ID (texte)">
-                    <TextInput value={str(selected.discord_message_channel_id)} onChange={v => set('discord_message_channel_id', nullable(v))} placeholder="123456789012345678" mono />
-                  </Field>
-                  <Field label="Message">
-                    <textarea
-                      ref={textareaRef}
-                      value={str(selected.discord_message)}
-                      onChange={e => set('discord_message', nullable(e.target.value))}
-                      placeholder="Ex: 🎮 Partie lancée sur Apex Legends !"
-                      rows={3}
-                      className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100 text-sm placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"
-                    />
-                  </Field>
-                  {/* Mention picker */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500">Insérer une mention :</span>
-                    <MentionPicker roles={roles} members={members} onInsert={insertMention} />
-                    {(roles.length === 0 && members.length === 0) && (
-                      <span className="text-xs text-slate-600">— Configure d'abord les rôles/membres dans Configuration Discord</span>
-                    )}
-                  </div>
+                  {botConfigured === false ? (
+                    <div className="rounded-xl border border-yellow-700/60 bg-yellow-950/20 px-4 py-3 flex items-start gap-3">
+                      <span className="text-yellow-400 mt-0.5">⚠️</span>
+                      <div>
+                        <p className="text-sm font-semibold text-yellow-300">Bot Discord non configuré</p>
+                        <p className="text-xs text-yellow-500 mt-0.5">Veuillez configurer le token du bot dans la section <span className="font-medium text-yellow-300">💬 Discord</span>.</p>
+                      </div>
+                    </div>
+                  ) : (
+                  <>
+                    <p className="text-xs text-slate-500">Envoie un message automatique dans un salon texte au lancement du jeu.</p>
+                    <Field label="Channel ID (texte)">
+                      <TextInput value={str(selected.discord_message_channel_id)} onChange={v => set('discord_message_channel_id', nullable(v))} placeholder="123456789012345678" mono />
+                    </Field>
+                    <Field label="Message">
+                      <textarea
+                        ref={textareaRef}
+                        value={str(selected.discord_message)}
+                        onChange={e => set('discord_message', nullable(e.target.value))}
+                        placeholder="Ex: 🎮 Partie lancée sur Apex Legends !"
+                        rows={3}
+                        className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100 text-sm placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none"
+                      />
+                    </Field>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">Insérer une mention :</span>
+                      <MentionPicker roles={roles} members={members} onInsert={insertMention} />
+                      {(roles.length === 0 && members.length === 0) && (
+                        <span className="text-xs text-slate-600">— Configure d'abord les rôles/membres dans Configuration Discord</span>
+                      )}
+                    </div>
+                  </>
+                  )}
                 </CollapsibleBlock>
 
                 {/* Feedback */}
